@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <title>ana_log</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div id="app">
+    <!-- Home Screen -->
+    <div id="home-screen" class="screen active">
+      <header class="home-header">
+        <h1 class="logo">ana<span class="logo-underscore">_</span>log</h1>
+        <p class="subtitle">your film, organised</p>
+      </header>
+      <div id="camera-list" class="camera-list"></div>
+    </div>
+
+    <!-- Camera Detail Screen -->
+    <div id="camera-screen" class="screen">
+      <header class="camera-header">
+        <button class="back-btn" id="camera-back-btn">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+            <path d="M15 18L9 12L15 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </button>
+        <div class="camera-header-info">
+          <h2 id="camera-title" class="camera-title"></h2>
+          <p id="camera-subtitle" class="camera-subtitle"></p>
+        </div>
+        <div class="header-spacer"></div>
+      </header>
+      <div id="photo-grid" class="photo-grid"></div>
+    </div>
+
+    <!-- Photo Viewer -->
+    <div id="viewer-screen" class="screen viewer-screen">
+      <header class="viewer-header" id="viewer-header">
+        <button class="back-btn viewer-close-btn" id="viewer-close-btn">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+            <path d="M18 6L6 18M6 6L18 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+          </svg>
+        </button>
+        <div class="viewer-meta" id="viewer-meta"></div>
+        <div class="header-spacer"></div>
+      </header>
+      <div class="viewer-container" id="viewer-container">
+        <div class="viewer-track" id="viewer-track"></div>
+      </div>
+      <footer class="viewer-footer" id="viewer-footer">
+        <div class="viewer-caption" id="viewer-caption"></div>
+        <div class="viewer-counter" id="viewer-counter"></div>
+      </footer>
+    </div>
+
+    <!-- Film grain overlay -->
+    <div class="grain-overlay"></div>
+  </div>
+
+  <script src="data.js"></script>
+  <script src="gestures.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

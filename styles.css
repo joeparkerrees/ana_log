@@ -1,0 +1,438 @@
+/* ── Reset & Base ── */
+*, *::before, *::after {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+}
+
+:root {
+  --bg: #0a0a0a;
+  --bg-card: #141414;
+  --bg-elevated: #1a1a1a;
+  --text-primary: #f5f0e8;
+  --text-secondary: #8a8478;
+  --text-tertiary: #5a5650;
+  --accent: #d4a853;
+  --accent-dim: #b8923f;
+  --grain-opacity: 0.035;
+  --safe-top: env(safe-area-inset-top, 20px);
+  --safe-bottom: env(safe-area-inset-bottom, 20px);
+  --radius: 12px;
+  --radius-sm: 8px;
+  --transition-screen: 0.4s cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+html, body {
+  height: 100%;
+  overflow: hidden;
+  background: var(--bg);
+  color: var(--text-primary);
+  font-family: -apple-system, 'SF Pro Display', 'Helvetica Neue', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  touch-action: none;
+}
+
+#app {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+/* ── Grain Overlay ── */
+.grain-overlay {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 9999;
+  opacity: var(--grain-opacity);
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+  background-size: 200px 200px;
+}
+
+/* ── Screen System ── */
+.screen {
+  position: absolute;
+  inset: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  transform: translateX(100%);
+  opacity: 0;
+  transition: transform var(--transition-screen), opacity var(--transition-screen);
+  will-change: transform, opacity;
+}
+
+.screen.active {
+  transform: translateX(0);
+  opacity: 1;
+}
+
+.screen.exit-left {
+  transform: translateX(-30%);
+  opacity: 0.5;
+}
+
+/* ── Home Screen ── */
+.home-header {
+  padding: calc(var(--safe-top) + 24px) 24px 8px;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: linear-gradient(to bottom, var(--bg) 60%, transparent);
+}
+
+.logo {
+  font-size: 36px;
+  font-weight: 700;
+  letter-spacing: -1.5px;
+  color: var(--text-primary);
+}
+
+.logo-underscore {
+  color: var(--accent);
+}
+
+.subtitle {
+  font-size: 14px;
+  color: var(--text-secondary);
+  letter-spacing: 0.5px;
+  margin-top: 2px;
+  font-weight: 400;
+}
+
+/* ── Camera List ── */
+.camera-list {
+  padding: 16px 16px calc(var(--safe-bottom) + 24px);
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.camera-card {
+  background: var(--bg-card);
+  border-radius: 16px;
+  overflow: hidden;
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.camera-card:active {
+  transform: scale(0.97);
+}
+
+.camera-card-preview {
+  display: flex;
+  gap: 2px;
+  height: 180px;
+  overflow: hidden;
+}
+
+.camera-card-preview .preview-img {
+  flex: 1;
+  object-fit: cover;
+  height: 100%;
+  min-width: 0;
+}
+
+.camera-card-info {
+  padding: 16px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.camera-card-name {
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: -0.3px;
+}
+
+.camera-card-meta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+}
+
+.camera-card-count {
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.camera-card-film {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
+}
+
+/* ── Camera Detail ── */
+.camera-header {
+  padding: calc(var(--safe-top) + 8px) 16px 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: linear-gradient(to bottom, var(--bg) 70%, transparent);
+}
+
+.back-btn {
+  background: none;
+  border: none;
+  color: var(--text-primary);
+  cursor: pointer;
+  padding: 8px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s;
+}
+
+.back-btn:active {
+  background: rgba(255,255,255,0.08);
+}
+
+.camera-header-info {
+  flex: 1;
+}
+
+.camera-title {
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: -0.3px;
+}
+
+.camera-subtitle {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-top: 1px;
+}
+
+.header-spacer {
+  width: 40px;
+}
+
+/* ── Photo Grid ── */
+.photo-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 2px;
+  padding: 4px 2px calc(var(--safe-bottom) + 24px);
+}
+
+.photo-grid-item {
+  aspect-ratio: 1;
+  overflow: hidden;
+  cursor: pointer;
+  position: relative;
+}
+
+.photo-grid-item img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 0.2s ease;
+}
+
+.photo-grid-item:active img {
+  transform: scale(1.05);
+}
+
+/* ── Photo Viewer ── */
+.viewer-screen {
+  background: #000;
+  z-index: 100;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.viewer-screen.active {
+  animation: viewerIn 0.35s cubic-bezier(0.32, 0.72, 0, 1) forwards;
+}
+
+@keyframes viewerIn {
+  from { opacity: 0; transform: scale(0.92); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+.viewer-header {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  padding: calc(var(--safe-top) + 8px) 16px 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  z-index: 110;
+  background: linear-gradient(to bottom, rgba(0,0,0,0.7) 0%, transparent 100%);
+  transition: opacity 0.3s ease;
+}
+
+.viewer-header.hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.viewer-close-btn {
+  color: #fff;
+}
+
+.viewer-meta {
+  flex: 1;
+  text-align: center;
+}
+
+.viewer-meta-camera {
+  font-size: 14px;
+  font-weight: 600;
+  color: #fff;
+}
+
+.viewer-meta-film {
+  font-size: 11px;
+  color: rgba(255,255,255,0.6);
+  margin-top: 1px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* ── Viewer Track (swipe) ── */
+.viewer-container {
+  flex: 1;
+  overflow: hidden;
+  position: relative;
+  touch-action: pan-y pinch-zoom;
+}
+
+.viewer-track {
+  display: flex;
+  height: 100%;
+  will-change: transform;
+  transition: transform 0.35s cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+.viewer-track.dragging {
+  transition: none;
+}
+
+.viewer-slide {
+  flex: 0 0 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  position: relative;
+}
+
+.viewer-slide img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  pointer-events: none;
+  transform-origin: center center;
+  will-change: transform;
+  transition: transform 0.25s cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+.viewer-slide img.zooming {
+  transition: none;
+}
+
+/* ── Viewer Footer ── */
+.viewer-footer {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  padding: 16px 24px calc(var(--safe-bottom) + 16px);
+  z-index: 110;
+  background: linear-gradient(to top, rgba(0,0,0,0.7) 0%, transparent 100%);
+  transition: opacity 0.3s ease;
+}
+
+.viewer-footer.hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.viewer-caption {
+  font-size: 14px;
+  color: rgba(255,255,255,0.85);
+  line-height: 1.4;
+}
+
+.viewer-counter {
+  font-size: 12px;
+  color: rgba(255,255,255,0.45);
+  margin-top: 6px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Dismiss animation ── */
+.viewer-screen.dismissing {
+  transition: opacity 0.3s ease;
+  opacity: 0;
+}
+
+/* ── Scroll indicators ── */
+::-webkit-scrollbar {
+  display: none;
+}
+
+/* ── Loading shimmer ── */
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+.shimmer {
+  background: linear-gradient(90deg, var(--bg-card) 0%, var(--bg-elevated) 50%, var(--bg-card) 100%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+}
+
+/* ── Pull-to-dismiss indicator on camera screen ── */
+.pull-indicator {
+  display: flex;
+  justify-content: center;
+  padding: 8px 0 0;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.pull-indicator.visible {
+  opacity: 1;
+}
+
+.pull-indicator-bar {
+  width: 36px;
+  height: 5px;
+  background: var(--text-tertiary);
+  border-radius: 3px;
+}
+
+/* ── Double-tap zoom ring ── */
+@keyframes zoomRing {
+  0% { transform: scale(0); opacity: 0.5; }
+  100% { transform: scale(1); opacity: 0; }
+}
+
+.zoom-ring {
+  position: absolute;
+  width: 80px;
+  height: 80px;
+  border: 2px solid rgba(255,255,255,0.5);
+  border-radius: 50%;
+  pointer-events: none;
+  animation: zoomRing 0.4s ease-out forwards;
+}
