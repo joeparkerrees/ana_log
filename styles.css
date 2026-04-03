@@ -7,7 +7,7 @@
 }
 
 :root {
-  --bg: #1a1a1a;
+  --bg: #f2efe8;
   --card-bg: #f2efe8;
   --text-dark: #1a1a1a;
   --text-muted: #b0aaa0;
@@ -20,8 +20,8 @@ html, body {
   height: 100%;
   overflow: hidden;
   background: var(--bg);
-  color: var(--text-light);
-  font-family: -apple-system, 'SF Pro Text', 'Helvetica Neue', sans-serif;
+  color: var(--text-dark);
+  font-family: 'SF Pro Display', 'SF Pro Text', -apple-system, 'Helvetica Neue', sans-serif;
   -webkit-font-smoothing: antialiased;
   touch-action: none;
   user-select: none;
@@ -36,46 +36,11 @@ html, body {
   flex-direction: column;
 }
 
-/* ── Top Bar ── */
-.top-bar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: calc(var(--safe-top) + 8px) 16px 12px;
-  flex-shrink: 0;
-}
-
-.app-title {
-  font-size: 17px;
-  font-weight: 600;
-  color: var(--text-light);
-  letter-spacing: -0.3px;
-}
-
-.top-btn {
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
-  background: rgba(255,255,255,0.1);
-  border: none;
-  color: var(--text-light);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  transition: background 0.15s;
-}
-
-.top-btn:active {
-  background: rgba(255,255,255,0.18);
-}
-
 /* ── Card Viewport ── */
 .card-viewport {
   flex: 1;
   overflow: hidden;
   position: relative;
-  padding: 16px 0 24px;
 }
 
 .card-track {
@@ -83,20 +48,17 @@ html, body {
   height: 100%;
   will-change: transform;
   transition: transform 0.45s cubic-bezier(0.32, 0.72, 0, 1);
-  gap: 16px;
-  padding: 0 24px;
 }
 
 .card-track.dragging {
   transition: none;
 }
 
-/* ── Content Card ── */
+/* ── Content Card (full bleed) ── */
 .content-card {
-  flex: 0 0 calc(100vw - 72px);
+  flex: 0 0 100vw;
   height: 100%;
   background: var(--card-bg);
-  border-radius: 20px;
   position: relative;
   overflow: hidden;
   display: flex;
@@ -107,7 +69,7 @@ html, body {
   flex: 1;
   position: relative;
   overflow: hidden;
-  padding: 28px 24px;
+  padding: calc(var(--safe-top) + 24px) 24px calc(var(--safe-bottom) + 24px);
 }
 
 /* ── Breadcrumb ── */
@@ -314,23 +276,27 @@ html, body {
 
 /* ── Dot indicator ── */
 .card-dots {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
   display: flex;
   justify-content: center;
   gap: 6px;
   padding: 12px 0 calc(var(--safe-bottom) + 8px);
-  flex-shrink: 0;
+  z-index: 50;
 }
 
 .card-dot {
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: rgba(255,255,255,0.25);
+  background: rgba(0,0,0,0.15);
   transition: background 0.2s, transform 0.2s;
 }
 
 .card-dot.active {
-  background: rgba(255,255,255,0.8);
+  background: rgba(0,0,0,0.5);
   transform: scale(1.2);
 }
 

@@ -56,60 +56,138 @@ function generateFilmPhoto(hue, sat, light, w, h, seed) {
   return canvas.toDataURL('image/jpeg', 0.88);
 }
 
-function generateCameraIcon(color1, color2, accent, w, h, seed) {
+function generateCameraIcon(color1, color2, accent, w, h, seed, style) {
   const canvas = document.createElement('canvas');
   canvas.width = w;
   canvas.height = h;
   const ctx = canvas.getContext('2d');
-  const rng = mulberry32(seed);
 
-  // Camera body
-  const bx = w * 0.1, by = h * 0.2, bw = w * 0.8, bh = h * 0.55;
-  ctx.fillStyle = color1;
-  roundRect(ctx, bx, by, bw, bh, 12);
-  ctx.fill();
+  // Drop shadow under camera
+  ctx.shadowColor = 'rgba(0,0,0,0.18)';
+  ctx.shadowBlur = 12;
+  ctx.shadowOffsetX = 2;
+  ctx.shadowOffsetY = 6;
 
-  // Lens
-  const cx = w * 0.5, cy = h * 0.45, lr = Math.min(bw, bh) * 0.28;
-  ctx.beginPath();
-  ctx.arc(cx, cy, lr, 0, Math.PI * 2);
-  ctx.fillStyle = '#111';
-  ctx.fill();
-  ctx.beginPath();
-  ctx.arc(cx, cy, lr * 0.7, 0, Math.PI * 2);
-  ctx.fillStyle = `hsl(${210 + rng() * 30}, 60%, 35%)`;
-  ctx.fill();
-  ctx.beginPath();
-  ctx.arc(cx, cy, lr * 0.3, 0, Math.PI * 2);
-  ctx.fillStyle = '#000';
-  ctx.fill();
-  // Lens highlight
-  ctx.beginPath();
-  ctx.arc(cx - lr * 0.15, cy - lr * 0.15, lr * 0.12, 0, Math.PI * 2);
-  ctx.fillStyle = 'rgba(255,255,255,0.5)';
-  ctx.fill();
-
-  // Viewfinder bump
-  ctx.fillStyle = color2 || color1;
-  roundRect(ctx, w * 0.35, h * 0.1, w * 0.2, h * 0.15, 4);
-  ctx.fill();
-
-  // Flash
-  ctx.fillStyle = '#ddd';
-  roundRect(ctx, w * 0.68, h * 0.12, w * 0.12, h * 0.1, 3);
-  ctx.fill();
-
-  // Accent detail
-  if (accent) {
-    ctx.fillStyle = accent;
-    roundRect(ctx, bx, by + bh * 0.6, bw * 0.25, bh * 0.4, 6);
+  if (style === 'compact') {
+    // Canon Sure Shot style — rounded body, big red grip, prominent lens ring
+    const bx = w*0.08, by = h*0.22, bw = w*0.84, bh = h*0.52;
+    ctx.fillStyle = color1;
+    roundRect(ctx, bx, by, bw, bh, 16);
+    ctx.fill();
+    ctx.shadowColor = 'transparent';
+    // Grip
+    ctx.fillStyle = accent || '#c4392f';
+    roundRect(ctx, bx, by + bh*0.15, bw*0.28, bh*0.85, 10);
+    ctx.fill();
+    // Lens barrel
+    const cx = w*0.55, cy = h*0.46;
+    ctx.beginPath(); ctx.arc(cx, cy, 28, 0, Math.PI*2);
+    ctx.fillStyle = '#222'; ctx.fill();
+    ctx.beginPath(); ctx.arc(cx, cy, 22, 0, Math.PI*2);
+    ctx.fillStyle = '#c41010'; ctx.fill(); // red ring
+    ctx.beginPath(); ctx.arc(cx, cy, 16, 0, Math.PI*2);
+    ctx.fillStyle = '#111'; ctx.fill();
+    ctx.beginPath(); ctx.arc(cx, cy, 8, 0, Math.PI*2);
+    ctx.fillStyle = '#1a3a5c'; ctx.fill();
+    ctx.beginPath(); ctx.arc(cx-4, cy-4, 3, 0, Math.PI*2);
+    ctx.fillStyle = 'rgba(255,255,255,0.45)'; ctx.fill();
+    // Viewfinder
+    ctx.fillStyle = '#333';
+    roundRect(ctx, w*0.56, h*0.14, w*0.18, h*0.1, 3);
+    ctx.fill();
+    // Flash
+    ctx.fillStyle = '#ccc';
+    roundRect(ctx, w*0.72, h*0.18, w*0.12, h*0.08, 2);
+    ctx.fill();
+    // Label
+    ctx.fillStyle = '#888';
+    ctx.font = `bold 8px 'SF Pro Display', -apple-system, sans-serif`;
+    ctx.fillText('Canon', w*0.38, h*0.30);
+  } else if (style === 'slim') {
+    // Fuji Gardia Mini — compact silver body
+    const bx = w*0.1, by = h*0.25, bw = w*0.78, bh = h*0.48;
+    ctx.fillStyle = color1;
+    roundRect(ctx, bx, by, bw, bh, 10);
+    ctx.fill();
+    ctx.shadowColor = 'transparent';
+    // Dark top strip
+    ctx.fillStyle = '#333';
+    roundRect(ctx, bx, by, bw, bh*0.2, 10);
+    ctx.fill();
+    ctx.fillStyle = color1;
+    roundRect(ctx, bx, by + bh*0.15, bw, bh*0.1, 0);
+    ctx.fill();
+    // Lens
+    const cx = w*0.38, cy = h*0.48;
+    ctx.beginPath(); ctx.arc(cx, cy, 18, 0, Math.PI*2);
+    ctx.fillStyle = '#111'; ctx.fill();
+    ctx.beginPath(); ctx.arc(cx, cy, 12, 0, Math.PI*2);
+    ctx.fillStyle = '#1a3a5c'; ctx.fill();
+    ctx.beginPath(); ctx.arc(cx-3, cy-3, 3, 0, Math.PI*2);
+    ctx.fillStyle = 'rgba(255,255,255,0.4)'; ctx.fill();
+    // Flash
+    ctx.fillStyle = '#aaa';
+    roundRect(ctx, w*0.6, by + 4, w*0.08, bh*0.15, 2);
+    ctx.fill();
+    // Label
+    ctx.fillStyle = '#666';
+    ctx.font = `bold 7px 'SF Pro Display', -apple-system, sans-serif`;
+    ctx.fillText('FUJI', w*0.55, h*0.50);
+  } else if (style === 'rangefinder') {
+    // Ricoh GR1 — black, boxy, serious
+    const bx = w*0.06, by = h*0.22, bw = w*0.88, bh = h*0.5;
+    ctx.fillStyle = color1;
+    roundRect(ctx, bx, by, bw, bh, 8);
+    ctx.fill();
+    ctx.shadowColor = 'transparent';
+    // Top plate
+    ctx.fillStyle = '#1a1a1a';
+    roundRect(ctx, bx, by, bw, bh*0.22, 8);
+    ctx.fill();
+    // Lens
+    const cx = w*0.38, cy = h*0.50;
+    ctx.beginPath(); ctx.arc(cx, cy, 20, 0, Math.PI*2);
+    ctx.fillStyle = '#0a0a0a'; ctx.fill();
+    ctx.beginPath(); ctx.arc(cx, cy, 14, 0, Math.PI*2);
+    ctx.fillStyle = '#1a3a60'; ctx.fill();
+    ctx.beginPath(); ctx.arc(cx-3, cy-3, 3, 0, Math.PI*2);
+    ctx.fillStyle = 'rgba(255,255,255,0.35)'; ctx.fill();
+    // Viewfinder window
+    ctx.fillStyle = '#334';
+    roundRect(ctx, w*0.58, h*0.24, w*0.14, h*0.07, 2);
+    ctx.fill();
+    // Flash
+    ctx.fillStyle = '#444';
+    roundRect(ctx, w*0.76, h*0.24, w*0.1, h*0.07, 2);
+    ctx.fill();
+  } else if (style === 'half-frame') {
+    // Kodak Ektar H35 — orange/tan, playful
+    const bx = w*0.08, by = h*0.2, bw = w*0.82, bh = h*0.55;
+    ctx.fillStyle = accent || '#e0a030';
+    roundRect(ctx, bx, by, bw, bh, 14);
+    ctx.fill();
+    ctx.shadowColor = 'transparent';
+    // Silver face plate
+    ctx.fillStyle = '#d0ccc0';
+    roundRect(ctx, bx + bw*0.3, by, bw*0.7, bh, 14);
+    ctx.fill();
+    // Lens
+    const cx = w*0.58, cy = h*0.46;
+    ctx.beginPath(); ctx.arc(cx, cy, 20, 0, Math.PI*2);
+    ctx.fillStyle = '#222'; ctx.fill();
+    ctx.beginPath(); ctx.arc(cx, cy, 13, 0, Math.PI*2);
+    ctx.fillStyle = '#1a3a5c'; ctx.fill();
+    ctx.beginPath(); ctx.arc(cx-3, cy-3, 3, 0, Math.PI*2);
+    ctx.fillStyle = 'rgba(255,255,255,0.4)'; ctx.fill();
+    // Viewfinder
+    ctx.fillStyle = '#555';
+    roundRect(ctx, w*0.62, h*0.15, w*0.12, h*0.08, 2);
+    ctx.fill();
+    // Screen/window
+    ctx.fillStyle = '#6ab';
+    roundRect(ctx, w*0.38, h*0.15, w*0.14, h*0.08, 2);
     ctx.fill();
   }
-
-  // Shadow
-  ctx.shadowColor = 'rgba(0,0,0,0.2)';
-  ctx.shadowBlur = 15;
-  ctx.shadowOffsetY = 5;
 
   return canvas.toDataURL('image/png');
 }
@@ -180,6 +258,7 @@ const CAMERAS = [
     name: 'canon sure shot',
     icon: null,
     iconColors: ['#e8ddd0', '#c4392f', '#c4392f'],
+    iconStyle: 'compact',
     rolls: [
       {
         id: 'bali-2024',
@@ -209,7 +288,8 @@ const CAMERAS = [
     id: 'fuji-gardia-mini',
     name: 'fuji gardia mini',
     icon: null,
-    iconColors: ['#555', '#444', null],
+    iconColors: ['#888', '#666', null],
+    iconStyle: 'slim',
     rolls: [
       {
         id: 'thailand-2024',
@@ -229,6 +309,7 @@ const CAMERAS = [
     name: 'ricoh gr1',
     icon: null,
     iconColors: ['#2a2a2a', '#222', null],
+    iconStyle: 'rangefinder',
     rolls: [
       {
         id: 'tokyo-2025',
@@ -259,6 +340,7 @@ const CAMERAS = [
     name: 'kodak ektar h35',
     icon: null,
     iconColors: ['#e0a030', '#c08020', '#e0a030'],
+    iconStyle: 'half-frame',
     rolls: [
       {
         id: 'new-york-2024',
@@ -296,7 +378,7 @@ function getPhotoSrc(photo, hiRes) {
 function getCameraIcon(camera) {
   if (!camera.icon) {
     const [c1, c2, acc] = camera.iconColors;
-    camera.icon = generateCameraIcon(c1, c2, acc, 200, 160, hashStr(camera.id));
+    camera.icon = generateCameraIcon(c1, c2, acc, 200, 160, hashStr(camera.id), camera.iconStyle);
   }
   return camera.icon;
 }

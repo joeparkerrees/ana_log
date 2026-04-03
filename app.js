@@ -264,10 +264,9 @@
   function getCardDimensions() {
     const vw = window.innerWidth;
     return {
-      w: vw - 72,
-      h: cardViewport.offsetHeight - 8,
-      gap: 16,
-      padLeft: 24,
+      w: vw,
+      h: cardViewport.offsetHeight,
+      gap: 0,
     };
   }
 
