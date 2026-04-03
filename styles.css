@@ -1,0 +1,340 @@
+/* ── Reset ── */
+*, *::before, *::after {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+}
+
+:root {
+  --bg: #1a1a1a;
+  --card-bg: #f2efe8;
+  --text-dark: #1a1a1a;
+  --text-muted: #b0aaa0;
+  --text-light: #e8e4dc;
+  --safe-top: env(safe-area-inset-top, 20px);
+  --safe-bottom: env(safe-area-inset-bottom, 20px);
+}
+
+html, body {
+  height: 100%;
+  overflow: hidden;
+  background: var(--bg);
+  color: var(--text-light);
+  font-family: -apple-system, 'SF Pro Text', 'Helvetica Neue', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+#app {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── Top Bar ── */
+.top-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: calc(var(--safe-top) + 8px) 16px 12px;
+  flex-shrink: 0;
+}
+
+.app-title {
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--text-light);
+  letter-spacing: -0.3px;
+}
+
+.top-btn {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.1);
+  border: none;
+  color: var(--text-light);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.top-btn:active {
+  background: rgba(255,255,255,0.18);
+}
+
+/* ── Card Viewport ── */
+.card-viewport {
+  flex: 1;
+  overflow: hidden;
+  position: relative;
+  padding: 16px 0 24px;
+}
+
+.card-track {
+  display: flex;
+  height: 100%;
+  will-change: transform;
+  transition: transform 0.45s cubic-bezier(0.32, 0.72, 0, 1);
+  gap: 16px;
+  padding: 0 24px;
+}
+
+.card-track.dragging {
+  transition: none;
+}
+
+/* ── Content Card ── */
+.content-card {
+  flex: 0 0 calc(100vw - 72px);
+  height: 100%;
+  background: var(--card-bg);
+  border-radius: 20px;
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.card-inner {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+  padding: 28px 24px;
+}
+
+/* ── Breadcrumb ── */
+.breadcrumb {
+  margin-bottom: 8px;
+}
+
+.breadcrumb-item {
+  font-size: 15px;
+  font-weight: 400;
+  color: var(--text-muted);
+  display: block;
+  line-height: 1.4;
+  cursor: pointer;
+}
+
+.breadcrumb-item:active {
+  opacity: 0.6;
+}
+
+.card-title {
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--text-dark);
+  line-height: 1.3;
+}
+
+/* ── Add Button ── */
+.add-btn {
+  position: absolute;
+  bottom: 28px;
+  left: 24px;
+  font-size: 15px;
+  font-weight: 400;
+  color: var(--text-dark);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px 0;
+}
+
+.add-btn:active {
+  opacity: 0.5;
+}
+
+/* ── Scattered Items ── */
+.scattered-item {
+  position: absolute;
+  cursor: pointer;
+  transition: transform 0.25s cubic-bezier(0.32, 0.72, 0, 1);
+  will-change: transform;
+}
+
+.scattered-item:active {
+  transform: var(--item-rotate) scale(0.95) !important;
+}
+
+/* Camera objects */
+.camera-obj {
+  width: 140px;
+  height: auto;
+}
+
+.camera-obj img {
+  width: 100%;
+  height: auto;
+  filter: drop-shadow(0 4px 12px rgba(0,0,0,0.15));
+  pointer-events: none;
+}
+
+/* Film canister objects */
+.film-obj {
+  width: 120px;
+  height: auto;
+}
+
+.film-obj img {
+  width: 100%;
+  height: auto;
+  filter: drop-shadow(0 4px 12px rgba(0,0,0,0.15));
+  pointer-events: none;
+}
+
+/* ── Polaroid Photos ── */
+.polaroid {
+  background: #fff;
+  padding: 6px 6px 24px;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.12), 0 1px 3px rgba(0,0,0,0.08);
+}
+
+.polaroid img {
+  width: 100%;
+  height: auto;
+  display: block;
+  pointer-events: none;
+}
+
+.polaroid-stack {
+  position: relative;
+  width: 180px;
+  height: 200px;
+  cursor: pointer;
+}
+
+.polaroid-stack .polaroid {
+  position: absolute;
+  width: 140px;
+}
+
+.polaroid-stack .polaroid:nth-child(1) {
+  transform: rotate(-8deg);
+  top: 20px;
+  left: 0;
+  z-index: 1;
+}
+
+.polaroid-stack .polaroid:nth-child(2) {
+  transform: rotate(4deg);
+  top: 0;
+  left: 30px;
+  z-index: 2;
+}
+
+.polaroid-stack .polaroid:nth-child(3) {
+  transform: rotate(-2deg);
+  top: 10px;
+  left: 15px;
+  z-index: 3;
+}
+
+/* Scattered polaroid in album view */
+.scattered-polaroid {
+  width: 130px;
+}
+
+.scattered-polaroid.large {
+  width: 160px;
+}
+
+/* ── Photo Viewer ── */
+.photo-viewer {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.35s ease;
+}
+
+.photo-viewer.active {
+  pointer-events: all;
+  opacity: 1;
+}
+
+.photo-viewer-card {
+  width: calc(100vw - 48px);
+  max-height: calc(100vh - 160px);
+  background: var(--card-bg);
+  border-radius: 20px;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  transform: scale(0.9);
+  transition: transform 0.35s cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+.photo-viewer.active .photo-viewer-card {
+  transform: scale(1);
+}
+
+.photo-viewer-img-wrap {
+  width: 100%;
+  position: relative;
+}
+
+.photo-viewer-img-wrap img {
+  width: 100%;
+  height: auto;
+  display: block;
+  border: 6px solid #fff;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+  will-change: transform;
+  transition: transform 0.35s cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+.photo-viewer-img-wrap img.dragging {
+  transition: none;
+}
+
+/* Viewer swipe/dismiss state */
+.photo-viewer.dismissing {
+  transition: opacity 0.25s ease;
+  opacity: 0;
+}
+
+.photo-viewer.dismissing .photo-viewer-card {
+  transition: transform 0.25s ease;
+}
+
+/* ── Dot indicator ── */
+.card-dots {
+  display: flex;
+  justify-content: center;
+  gap: 6px;
+  padding: 12px 0 calc(var(--safe-bottom) + 8px);
+  flex-shrink: 0;
+}
+
+.card-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.25);
+  transition: background 0.2s, transform 0.2s;
+}
+
+.card-dot.active {
+  background: rgba(255,255,255,0.8);
+  transform: scale(1.2);
+}
+
+/* ── Scrollbar ── */
+::-webkit-scrollbar {
+  display: none;
+}
