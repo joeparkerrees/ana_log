@@ -1,4 +1,4 @@
-/* ── Reset & Base ── */
+/* ── Reset ── */
 *, *::before, *::after {
   margin: 0;
   padding: 0;
@@ -7,432 +7,334 @@
 }
 
 :root {
-  --bg: #0a0a0a;
-  --bg-card: #141414;
-  --bg-elevated: #1a1a1a;
-  --text-primary: #f5f0e8;
-  --text-secondary: #8a8478;
-  --text-tertiary: #5a5650;
-  --accent: #d4a853;
-  --accent-dim: #b8923f;
-  --grain-opacity: 0.035;
+  --bg: #1a1a1a;
+  --card-bg: #f2efe8;
+  --text-dark: #1a1a1a;
+  --text-muted: #b0aaa0;
+  --text-light: #e8e4dc;
   --safe-top: env(safe-area-inset-top, 20px);
   --safe-bottom: env(safe-area-inset-bottom, 20px);
-  --radius: 12px;
-  --radius-sm: 8px;
-  --transition-screen: 0.4s cubic-bezier(0.32, 0.72, 0, 1);
 }
 
 html, body {
   height: 100%;
   overflow: hidden;
   background: var(--bg);
-  color: var(--text-primary);
-  font-family: -apple-system, 'SF Pro Display', 'Helvetica Neue', sans-serif;
+  color: var(--text-light);
+  font-family: -apple-system, 'SF Pro Text', 'Helvetica Neue', sans-serif;
   -webkit-font-smoothing: antialiased;
   touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 #app {
   position: relative;
   width: 100%;
   height: 100%;
-  overflow: hidden;
-}
-
-/* ── Grain Overlay ── */
-.grain-overlay {
-  position: fixed;
-  inset: 0;
-  pointer-events: none;
-  z-index: 9999;
-  opacity: var(--grain-opacity);
-  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
-  background-size: 200px 200px;
-}
-
-/* ── Screen System ── */
-.screen {
-  position: absolute;
-  inset: 0;
-  overflow-y: auto;
-  overflow-x: hidden;
-  -webkit-overflow-scrolling: touch;
-  transform: translateX(100%);
-  opacity: 0;
-  transition: transform var(--transition-screen), opacity var(--transition-screen);
-  will-change: transform, opacity;
-}
-
-.screen.active {
-  transform: translateX(0);
-  opacity: 1;
-}
-
-.screen.exit-left {
-  transform: translateX(-30%);
-  opacity: 0.5;
-}
-
-/* ── Home Screen ── */
-.home-header {
-  padding: calc(var(--safe-top) + 24px) 24px 8px;
-  position: sticky;
-  top: 0;
-  z-index: 10;
-  background: linear-gradient(to bottom, var(--bg) 60%, transparent);
-}
-
-.logo {
-  font-size: 36px;
-  font-weight: 700;
-  letter-spacing: -1.5px;
-  color: var(--text-primary);
-}
-
-.logo-underscore {
-  color: var(--accent);
-}
-
-.subtitle {
-  font-size: 14px;
-  color: var(--text-secondary);
-  letter-spacing: 0.5px;
-  margin-top: 2px;
-  font-weight: 400;
-}
-
-/* ── Camera List ── */
-.camera-list {
-  padding: 16px 16px calc(var(--safe-bottom) + 24px);
   display: flex;
   flex-direction: column;
-  gap: 20px;
 }
 
-.camera-card {
-  background: var(--bg-card);
-  border-radius: 16px;
-  overflow: hidden;
-  cursor: pointer;
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
-  -webkit-user-select: none;
-  user-select: none;
-}
-
-.camera-card:active {
-  transform: scale(0.97);
-}
-
-.camera-card-preview {
+/* ── Top Bar ── */
+.top-bar {
   display: flex;
-  gap: 2px;
-  height: 180px;
-  overflow: hidden;
-}
-
-.camera-card-preview .preview-img {
-  flex: 1;
-  object-fit: cover;
-  height: 100%;
-  min-width: 0;
-}
-
-.camera-card-info {
-  padding: 16px;
-  display: flex;
-  justify-content: space-between;
   align-items: center;
+  justify-content: space-between;
+  padding: calc(var(--safe-top) + 8px) 16px 12px;
+  flex-shrink: 0;
 }
 
-.camera-card-name {
-  font-size: 18px;
+.app-title {
+  font-size: 17px;
   font-weight: 600;
+  color: var(--text-light);
   letter-spacing: -0.3px;
 }
 
-.camera-card-meta {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 2px;
-}
-
-.camera-card-count {
-  font-size: 13px;
-  color: var(--text-secondary);
-}
-
-.camera-card-film {
-  font-size: 11px;
-  color: var(--text-tertiary);
-  letter-spacing: 0.3px;
-  text-transform: uppercase;
-}
-
-/* ── Camera Detail ── */
-.camera-header {
-  padding: calc(var(--safe-top) + 8px) 16px 12px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  position: sticky;
-  top: 0;
-  z-index: 10;
-  background: linear-gradient(to bottom, var(--bg) 70%, transparent);
-}
-
-.back-btn {
-  background: none;
-  border: none;
-  color: var(--text-primary);
-  cursor: pointer;
-  padding: 8px;
+.top-btn {
+  width: 40px;
+  height: 40px;
   border-radius: 50%;
+  background: rgba(255,255,255,0.1);
+  border: none;
+  color: var(--text-light);
   display: flex;
   align-items: center;
   justify-content: center;
+  cursor: pointer;
   transition: background 0.15s;
 }
 
-.back-btn:active {
-  background: rgba(255,255,255,0.08);
+.top-btn:active {
+  background: rgba(255,255,255,0.18);
 }
 
-.camera-header-info {
+/* ── Card Viewport ── */
+.card-viewport {
   flex: 1;
-}
-
-.camera-title {
-  font-size: 20px;
-  font-weight: 600;
-  letter-spacing: -0.3px;
-}
-
-.camera-subtitle {
-  font-size: 12px;
-  color: var(--text-secondary);
-  margin-top: 1px;
-}
-
-.header-spacer {
-  width: 40px;
-}
-
-/* ── Photo Grid ── */
-.photo-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 2px;
-  padding: 4px 2px calc(var(--safe-bottom) + 24px);
-}
-
-.photo-grid-item {
-  aspect-ratio: 1;
   overflow: hidden;
-  cursor: pointer;
   position: relative;
+  padding: 16px 0 24px;
 }
 
-.photo-grid-item img {
-  width: 100%;
+.card-track {
+  display: flex;
   height: 100%;
-  object-fit: cover;
-  transition: transform 0.2s ease;
+  will-change: transform;
+  transition: transform 0.45s cubic-bezier(0.32, 0.72, 0, 1);
+  gap: 16px;
+  padding: 0 24px;
 }
 
-.photo-grid-item:active img {
-  transform: scale(1.05);
+.card-track.dragging {
+  transition: none;
 }
 
-/* ── Photo Viewer ── */
-.viewer-screen {
-  background: #000;
-  z-index: 100;
+/* ── Content Card ── */
+.content-card {
+  flex: 0 0 calc(100vw - 72px);
+  height: 100%;
+  background: var(--card-bg);
+  border-radius: 20px;
+  position: relative;
   overflow: hidden;
   display: flex;
   flex-direction: column;
 }
 
-.viewer-screen.active {
-  animation: viewerIn 0.35s cubic-bezier(0.32, 0.72, 0, 1) forwards;
+.card-inner {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+  padding: 28px 24px;
 }
 
-@keyframes viewerIn {
-  from { opacity: 0; transform: scale(0.92); }
-  to { opacity: 1; transform: scale(1); }
+/* ── Breadcrumb ── */
+.breadcrumb {
+  margin-bottom: 8px;
 }
 
-.viewer-header {
+.breadcrumb-item {
+  font-size: 15px;
+  font-weight: 400;
+  color: var(--text-muted);
+  display: block;
+  line-height: 1.4;
+  cursor: pointer;
+}
+
+.breadcrumb-item:active {
+  opacity: 0.6;
+}
+
+.card-title {
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--text-dark);
+  line-height: 1.3;
+}
+
+/* ── Add Button ── */
+.add-btn {
   position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  padding: calc(var(--safe-top) + 8px) 16px 16px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  z-index: 110;
-  background: linear-gradient(to bottom, rgba(0,0,0,0.7) 0%, transparent 100%);
-  transition: opacity 0.3s ease;
+  bottom: 28px;
+  left: 24px;
+  font-size: 15px;
+  font-weight: 400;
+  color: var(--text-dark);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px 0;
 }
 
-.viewer-header.hidden {
-  opacity: 0;
+.add-btn:active {
+  opacity: 0.5;
+}
+
+/* ── Scattered Items ── */
+.scattered-item {
+  position: absolute;
+  cursor: pointer;
+  transition: transform 0.25s cubic-bezier(0.32, 0.72, 0, 1);
+  will-change: transform;
+}
+
+.scattered-item:active {
+  transform: var(--item-rotate) scale(0.95) !important;
+}
+
+/* Camera objects */
+.camera-obj {
+  width: 140px;
+  height: auto;
+}
+
+.camera-obj img {
+  width: 100%;
+  height: auto;
+  filter: drop-shadow(0 4px 12px rgba(0,0,0,0.15));
   pointer-events: none;
 }
 
-.viewer-close-btn {
-  color: #fff;
+/* Film canister objects */
+.film-obj {
+  width: 120px;
+  height: auto;
 }
 
-.viewer-meta {
-  flex: 1;
-  text-align: center;
+.film-obj img {
+  width: 100%;
+  height: auto;
+  filter: drop-shadow(0 4px 12px rgba(0,0,0,0.15));
+  pointer-events: none;
 }
 
-.viewer-meta-camera {
-  font-size: 14px;
-  font-weight: 600;
-  color: #fff;
+/* ── Polaroid Photos ── */
+.polaroid {
+  background: #fff;
+  padding: 6px 6px 24px;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.12), 0 1px 3px rgba(0,0,0,0.08);
 }
 
-.viewer-meta-film {
-  font-size: 11px;
-  color: rgba(255,255,255,0.6);
-  margin-top: 1px;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
+.polaroid img {
+  width: 100%;
+  height: auto;
+  display: block;
+  pointer-events: none;
 }
 
-/* ── Viewer Track (swipe) ── */
-.viewer-container {
-  flex: 1;
-  overflow: hidden;
+.polaroid-stack {
   position: relative;
-  touch-action: pan-y pinch-zoom;
+  width: 180px;
+  height: 200px;
+  cursor: pointer;
 }
 
-.viewer-track {
+.polaroid-stack .polaroid {
+  position: absolute;
+  width: 140px;
+}
+
+.polaroid-stack .polaroid:nth-child(1) {
+  transform: rotate(-8deg);
+  top: 20px;
+  left: 0;
+  z-index: 1;
+}
+
+.polaroid-stack .polaroid:nth-child(2) {
+  transform: rotate(4deg);
+  top: 0;
+  left: 30px;
+  z-index: 2;
+}
+
+.polaroid-stack .polaroid:nth-child(3) {
+  transform: rotate(-2deg);
+  top: 10px;
+  left: 15px;
+  z-index: 3;
+}
+
+/* Scattered polaroid in album view */
+.scattered-polaroid {
+  width: 130px;
+}
+
+.scattered-polaroid.large {
+  width: 160px;
+}
+
+/* ── Photo Viewer ── */
+.photo-viewer {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
   display: flex;
-  height: 100%;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.35s ease;
+}
+
+.photo-viewer.active {
+  pointer-events: all;
+  opacity: 1;
+}
+
+.photo-viewer-card {
+  width: calc(100vw - 48px);
+  max-height: calc(100vh - 160px);
+  background: var(--card-bg);
+  border-radius: 20px;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  transform: scale(0.9);
+  transition: transform 0.35s cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+.photo-viewer.active .photo-viewer-card {
+  transform: scale(1);
+}
+
+.photo-viewer-img-wrap {
+  width: 100%;
+  position: relative;
+}
+
+.photo-viewer-img-wrap img {
+  width: 100%;
+  height: auto;
+  display: block;
+  border: 6px solid #fff;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
   will-change: transform;
   transition: transform 0.35s cubic-bezier(0.32, 0.72, 0, 1);
 }
 
-.viewer-track.dragging {
+.photo-viewer-img-wrap img.dragging {
   transition: none;
 }
 
-.viewer-slide {
-  flex: 0 0 100%;
-  height: 100%;
+/* Viewer swipe/dismiss state */
+.photo-viewer.dismissing {
+  transition: opacity 0.25s ease;
+  opacity: 0;
+}
+
+.photo-viewer.dismissing .photo-viewer-card {
+  transition: transform 0.25s ease;
+}
+
+/* ── Dot indicator ── */
+.card-dots {
   display: flex;
-  align-items: center;
   justify-content: center;
-  overflow: hidden;
-  position: relative;
+  gap: 6px;
+  padding: 12px 0 calc(var(--safe-bottom) + 8px);
+  flex-shrink: 0;
 }
 
-.viewer-slide img {
-  max-width: 100%;
-  max-height: 100%;
-  object-fit: contain;
-  pointer-events: none;
-  transform-origin: center center;
-  will-change: transform;
-  transition: transform 0.25s cubic-bezier(0.32, 0.72, 0, 1);
+.card-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.25);
+  transition: background 0.2s, transform 0.2s;
 }
 
-.viewer-slide img.zooming {
-  transition: none;
+.card-dot.active {
+  background: rgba(255,255,255,0.8);
+  transform: scale(1.2);
 }
 
-/* ── Viewer Footer ── */
-.viewer-footer {
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  padding: 16px 24px calc(var(--safe-bottom) + 16px);
-  z-index: 110;
-  background: linear-gradient(to top, rgba(0,0,0,0.7) 0%, transparent 100%);
-  transition: opacity 0.3s ease;
-}
-
-.viewer-footer.hidden {
-  opacity: 0;
-  pointer-events: none;
-}
-
-.viewer-caption {
-  font-size: 14px;
-  color: rgba(255,255,255,0.85);
-  line-height: 1.4;
-}
-
-.viewer-counter {
-  font-size: 12px;
-  color: rgba(255,255,255,0.45);
-  margin-top: 6px;
-  font-variant-numeric: tabular-nums;
-}
-
-/* ── Dismiss animation ── */
-.viewer-screen.dismissing {
-  transition: opacity 0.3s ease;
-  opacity: 0;
-}
-
-/* ── Scroll indicators ── */
+/* ── Scrollbar ── */
 ::-webkit-scrollbar {
   display: none;
-}
-
-/* ── Loading shimmer ── */
-@keyframes shimmer {
-  0% { background-position: -200% 0; }
-  100% { background-position: 200% 0; }
-}
-
-.shimmer {
-  background: linear-gradient(90deg, var(--bg-card) 0%, var(--bg-elevated) 50%, var(--bg-card) 100%);
-  background-size: 200% 100%;
-  animation: shimmer 1.5s infinite;
-}
-
-/* ── Pull-to-dismiss indicator on camera screen ── */
-.pull-indicator {
-  display: flex;
-  justify-content: center;
-  padding: 8px 0 0;
-  opacity: 0;
-  transition: opacity 0.2s;
-}
-
-.pull-indicator.visible {
-  opacity: 1;
-}
-
-.pull-indicator-bar {
-  width: 36px;
-  height: 5px;
-  background: var(--text-tertiary);
-  border-radius: 3px;
-}
-
-/* ── Double-tap zoom ring ── */
-@keyframes zoomRing {
-  0% { transform: scale(0); opacity: 0.5; }
-  100% { transform: scale(1); opacity: 0; }
-}
-
-.zoom-ring {
-  position: absolute;
-  width: 80px;
-  height: 80px;
-  border: 2px solid rgba(255,255,255,0.5);
-  border-radius: 50%;
-  pointer-events: none;
-  animation: zoomRing 0.4s ease-out forwards;
 }

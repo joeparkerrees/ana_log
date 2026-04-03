@@ -4,386 +4,479 @@
   'use strict';
 
   // ── State ──
-  let currentCamera = null;
-  let currentPhotoIndex = 0;
-  let viewerSwipe = null;
-  let viewerPinch = null;
-  let viewerDismissSwipe = null;
-  let chromeVisible = true;
+  let currentCardIndex = 0;
+  let navigationStack = []; // breadcrumb trail
+  let cardSwipeHandler = null;
+  let viewerSwipeHandler = null;
+  let cards = []; // array of card data objects
 
   // ── Elements ──
-  const homeScreen = document.getElementById('home-screen');
-  const cameraScreen = document.getElementById('camera-screen');
-  const viewerScreen = document.getElementById('viewer-screen');
-  const cameraList = document.getElementById('camera-list');
-  const photoGrid = document.getElementById('photo-grid');
-  const cameraTitle = document.getElementById('camera-title');
-  const cameraSubtitle = document.getElementById('camera-subtitle');
-  const cameraBackBtn = document.getElementById('camera-back-btn');
-  const viewerCloseBtn = document.getElementById('viewer-close-btn');
-  const viewerTrack = document.getElementById('viewer-track');
-  const viewerContainer = document.getElementById('viewer-container');
-  const viewerMeta = document.getElementById('viewer-meta');
-  const viewerCaption = document.getElementById('viewer-caption');
-  const viewerCounter = document.getElementById('viewer-counter');
-  const viewerHeader = document.getElementById('viewer-header');
-  const viewerFooter = document.getElementById('viewer-footer');
+  const cardViewport = document.getElementById('card-viewport');
+  const cardTrack = document.getElementById('card-track');
+  const photoViewer = document.getElementById('photo-viewer');
+  const photoViewerCard = document.getElementById('photo-viewer-card');
+  const photoViewerImg = document.getElementById('photo-viewer-img');
+  const photoViewerImgWrap = document.getElementById('photo-viewer-img-wrap');
 
-  // ── Render Home ──
-  function renderHome() {
-    cameraList.innerHTML = '';
-    CAMERAS.forEach(camera => {
-      const card = document.createElement('div');
-      card.className = 'camera-card';
-      card.setAttribute('role', 'button');
-      card.setAttribute('aria-label', `${camera.name} — ${camera.photos.length} photos`);
+  // ── Scattered position generator ──
+  function scatterPositions(count, areaW, areaH, itemW, itemH, seed) {
+    const rng = mulberry32(seed);
+    const positions = [];
+    const padX = 20, padY = 60;
+    const usableW = areaW - itemW - padX * 2;
+    const usableH = areaH - itemH - padY - 80; // leave room for "add" at bottom
 
-      // Preview: first 3 photos
-      const previewPhotos = camera.photos.slice(0, 3);
-      const previewHTML = previewPhotos.map(p =>
-        `<img class="preview-img" src="${getPhotoSrc(p)}" alt="" loading="lazy">`
-      ).join('');
-
-      card.innerHTML = `
-        <div class="camera-card-preview">${previewHTML}</div>
-        <div class="camera-card-info">
-          <div>
-            <div class="camera-card-name">${camera.name}</div>
-          </div>
-          <div class="camera-card-meta">
-            <span class="camera-card-count">${camera.photos.length} frames</span>
-            <span class="camera-card-film">${camera.filmStock}</span>
-          </div>
-        </div>
-      `;
-
-      card.addEventListener('click', () => openCamera(camera));
-      cameraList.appendChild(card);
-    });
-  }
-
-  // ── Screen Navigation ──
-  function navigateTo(target, from) {
-    from.classList.remove('active');
-    from.classList.add('exit-left');
-    target.classList.add('active');
-
-    setTimeout(() => {
-      from.classList.remove('exit-left');
-    }, 400);
-  }
-
-  function navigateBack(target, from) {
-    from.classList.remove('active');
-    target.classList.remove('exit-left');
-    target.classList.add('active');
-
-    setTimeout(() => {
-      from.style.transform = '';
-    }, 400);
-  }
-
-  // ── Camera Screen ──
-  function openCamera(camera) {
-    currentCamera = camera;
-    cameraTitle.textContent = camera.name;
-    cameraSubtitle.textContent = `${camera.photos.length} frames · ${camera.filmStock}`;
-    renderPhotoGrid(camera);
-    navigateTo(cameraScreen, homeScreen);
-    cameraScreen.scrollTop = 0;
-  }
-
-  function renderPhotoGrid(camera) {
-    photoGrid.innerHTML = '';
-    camera.photos.forEach((photo, idx) => {
-      const item = document.createElement('div');
-      item.className = 'photo-grid-item';
-      item.innerHTML = `<img src="${getPhotoSrc(photo)}" alt="${photo.caption}" loading="lazy">`;
-      item.addEventListener('click', () => openViewer(idx));
-      photoGrid.appendChild(item);
-    });
-  }
-
-  cameraBackBtn.addEventListener('click', () => {
-    navigateBack(homeScreen, cameraScreen);
-    currentCamera = null;
-  });
-
-  // ── Edge-swipe back gesture on camera screen ──
-  new SwipeHandler(cameraScreen, {
-    direction: 'horizontal',
-    onStart() {},
-    onMove(dx) {
-      if (dx > 0) {
-        const progress = Math.min(dx / window.innerWidth, 1);
-        cameraScreen.style.transform = `translateX(${dx}px)`;
-        cameraScreen.style.opacity = 1 - progress * 0.3;
-        homeScreen.style.transform = `translateX(${-30 + progress * 30}%)`;
-        homeScreen.style.opacity = 0.5 + progress * 0.5;
+    for (let i = 0; i < count; i++) {
+      let x, y, attempts = 0, ok = false;
+      while (attempts < 30) {
+        x = padX + rng() * usableW;
+        y = padY + rng() * usableH;
+        // Check overlap with existing
+        ok = true;
+        for (const p of positions) {
+          if (Math.abs(x - p.x) < itemW * 0.5 && Math.abs(y - p.y) < itemH * 0.5) {
+            ok = false;
+            break;
+          }
+        }
+        if (ok) break;
+        attempts++;
       }
-    },
-    onEnd(dx, dy, vx) {
-      if (dx > 80 || vx > 500) {
-        // Complete the back gesture
-        cameraScreen.style.transition = 'transform 0.3s ease, opacity 0.3s ease';
-        cameraScreen.style.transform = 'translateX(100%)';
-        cameraScreen.style.opacity = '0';
-        homeScreen.style.transition = 'transform 0.3s ease, opacity 0.3s ease';
-        homeScreen.style.transform = 'translateX(0)';
-        homeScreen.style.opacity = '1';
-        homeScreen.classList.add('active');
-
-        setTimeout(() => {
-          cameraScreen.classList.remove('active');
-          cameraScreen.style.transition = '';
-          cameraScreen.style.transform = '';
-          cameraScreen.style.opacity = '';
-          homeScreen.style.transition = '';
-          homeScreen.style.transform = '';
-          homeScreen.style.opacity = '';
-          currentCamera = null;
-        }, 300);
-      } else {
-        // Snap back
-        cameraScreen.style.transition = 'transform 0.3s ease, opacity 0.3s ease';
-        cameraScreen.style.transform = 'translateX(0)';
-        cameraScreen.style.opacity = '1';
-        homeScreen.style.transition = 'transform 0.3s ease, opacity 0.3s ease';
-        homeScreen.style.transform = 'translateX(-30%)';
-        homeScreen.style.opacity = '0.5';
-
-        setTimeout(() => {
-          cameraScreen.style.transition = '';
-          homeScreen.style.transition = '';
-        }, 300);
-      }
+      const rotation = (rng() - 0.5) * 20; // -10 to +10 degrees
+      positions.push({ x: x || padX, y: y || padY, rotation });
     }
-  });
+    return positions;
+  }
+
+  // ── Card rendering ──
+
+  function buildCards() {
+    // Two main cards: "my cameras" and "my film"
+    cards = [
+      { type: 'cameras', title: 'my cameras' },
+      { type: 'film', title: 'my film' },
+    ];
+  }
+
+  function renderCards() {
+    cardTrack.innerHTML = '';
+
+    cards.forEach((card, idx) => {
+      const el = document.createElement('div');
+      el.className = 'content-card';
+      el.dataset.index = idx;
+
+      const inner = document.createElement('div');
+      inner.className = 'card-inner';
+
+      // Breadcrumbs
+      if (navigationStack.length > 0) {
+        const bc = document.createElement('div');
+        bc.className = 'breadcrumb';
+        navigationStack.forEach((item, i) => {
+          const span = document.createElement('span');
+          span.className = 'breadcrumb-item';
+          span.textContent = item.title;
+          span.addEventListener('click', () => navigateBack(i));
+          bc.appendChild(span);
+        });
+        inner.appendChild(bc);
+      }
+
+      // Title
+      if (card.title) {
+        const title = document.createElement('div');
+        title.className = 'card-title';
+        title.textContent = card.title + (card.flag ? ' ' + card.flag : '');
+        inner.appendChild(title);
+      }
+
+      // Content
+      if (card.type === 'cameras') {
+        renderCamerasContent(inner, card);
+      } else if (card.type === 'film') {
+        renderFilmContent(inner, card);
+      } else if (card.type === 'camera-detail') {
+        renderCameraDetailContent(inner, card);
+      } else if (card.type === 'roll-detail') {
+        renderRollDetailContent(inner, card);
+      }
+
+      // Add button
+      const addBtn = document.createElement('button');
+      addBtn.className = 'add-btn';
+      addBtn.textContent = 'add';
+      inner.appendChild(addBtn);
+
+      el.appendChild(inner);
+      cardTrack.appendChild(el);
+    });
+
+    renderDots();
+    positionTrack(false);
+  }
+
+  function renderCamerasContent(inner, card) {
+    const rect = getCardDimensions();
+    const positions = scatterPositions(CAMERAS.length, rect.w, rect.h, 140, 120, 42);
+
+    CAMERAS.forEach((camera, i) => {
+      const pos = positions[i];
+      const item = document.createElement('div');
+      item.className = 'scattered-item camera-obj';
+      item.style.left = pos.x + 'px';
+      item.style.top = pos.y + 'px';
+      item.style.setProperty('--item-rotate', `rotate(${pos.rotation}deg)`);
+      item.style.transform = `rotate(${pos.rotation}deg)`;
+
+      const img = document.createElement('img');
+      img.src = getCameraIcon(camera);
+      img.alt = camera.name;
+      img.draggable = false;
+      item.appendChild(img);
+
+      item.addEventListener('click', () => drillIntoCamera(camera));
+      inner.appendChild(item);
+    });
+  }
+
+  function renderFilmContent(inner, card) {
+    const rect = getCardDimensions();
+    const positions = scatterPositions(FILM_STOCKS.length, rect.w, rect.h, 120, 140, 77);
+
+    FILM_STOCKS.forEach((film, i) => {
+      const pos = positions[i];
+      const item = document.createElement('div');
+      item.className = 'scattered-item film-obj';
+      item.style.left = pos.x + 'px';
+      item.style.top = pos.y + 'px';
+      item.style.setProperty('--item-rotate', `rotate(${pos.rotation}deg)`);
+      item.style.transform = `rotate(${pos.rotation}deg)`;
+
+      const img = document.createElement('img');
+      img.src = getFilmIcon(film);
+      img.alt = film.name;
+      img.draggable = false;
+      item.appendChild(img);
+
+      inner.appendChild(item);
+    });
+  }
+
+  function renderCameraDetailContent(inner, card) {
+    const camera = card.camera;
+    const rect = getCardDimensions();
+    const positions = scatterPositions(camera.rolls.length, rect.w, rect.h, 180, 200, hashStr(camera.id + 'detail'));
+
+    camera.rolls.forEach((roll, i) => {
+      const pos = positions[i];
+      const stack = document.createElement('div');
+      stack.className = 'scattered-item polaroid-stack';
+      stack.style.left = pos.x + 'px';
+      stack.style.top = pos.y + 'px';
+      stack.style.setProperty('--item-rotate', `rotate(${pos.rotation}deg)`);
+      stack.style.transform = `rotate(${pos.rotation}deg)`;
+
+      // Show up to 3 photos stacked
+      const previewPhotos = roll.photos.slice(0, 3);
+      previewPhotos.forEach((photo) => {
+        const pol = document.createElement('div');
+        pol.className = 'polaroid';
+        const img = document.createElement('img');
+        img.src = getPhotoSrc(photo, false);
+        img.alt = '';
+        img.draggable = false;
+        pol.appendChild(img);
+        stack.appendChild(pol);
+      });
+
+      stack.addEventListener('click', () => drillIntoRoll(camera, roll));
+      inner.appendChild(stack);
+    });
+  }
+
+  function renderRollDetailContent(inner, card) {
+    const roll = card.roll;
+    const rect = getCardDimensions();
+    const positions = scatterPositions(roll.photos.length, rect.w, rect.h, 140, 170, hashStr(roll.id));
+
+    roll.photos.forEach((photo, i) => {
+      const pos = positions[i];
+      const item = document.createElement('div');
+      item.className = 'scattered-item scattered-polaroid';
+      if (i % 3 === 0) item.classList.add('large');
+      item.style.left = pos.x + 'px';
+      item.style.top = pos.y + 'px';
+      item.style.setProperty('--item-rotate', `rotate(${pos.rotation}deg)`);
+      item.style.transform = `rotate(${pos.rotation}deg)`;
+
+      const pol = document.createElement('div');
+      pol.className = 'polaroid';
+      const img = document.createElement('img');
+      img.src = getPhotoSrc(photo, false);
+      img.alt = '';
+      img.draggable = false;
+      pol.appendChild(img);
+      item.appendChild(pol);
+
+      item.addEventListener('click', () => openPhotoViewer(photo, roll));
+      inner.appendChild(item);
+    });
+  }
+
+  // ── Navigation ──
+
+  function drillIntoCamera(camera) {
+    navigationStack.push({ title: 'my cameras', cards: [...cards], index: currentCardIndex });
+    cards = [{
+      type: 'camera-detail',
+      title: camera.name,
+      camera: camera,
+    }];
+    currentCardIndex = 0;
+    renderCards();
+  }
+
+  function drillIntoRoll(camera, roll) {
+    navigationStack.push({ title: camera.name, cards: [...cards], index: currentCardIndex });
+    cards = [{
+      type: 'roll-detail',
+      title: roll.title,
+      flag: roll.flag,
+      roll: roll,
+      camera: camera,
+    }];
+    currentCardIndex = 0;
+    renderCards();
+  }
+
+  function navigateBack(toIndex) {
+    // Pop stack back to the target index
+    const target = navigationStack[toIndex];
+    navigationStack = navigationStack.slice(0, toIndex);
+    cards = target.cards;
+    currentCardIndex = target.index;
+    renderCards();
+  }
+
+  // ── Card swipe ──
+
+  function getCardDimensions() {
+    const vw = window.innerWidth;
+    return {
+      w: vw - 72,
+      h: cardViewport.offsetHeight - 8,
+      gap: 16,
+      padLeft: 24,
+    };
+  }
+
+  function setupCardSwipe() {
+    if (cardSwipeHandler) cardSwipeHandler.destroy();
+
+    cardSwipeHandler = new SwipeHandler(cardViewport, {
+      direction: 'horizontal',
+      onStart() {
+        cardTrack.classList.add('dragging');
+      },
+      onMove(dx) {
+        const dim = getCardDimensions();
+        const cardW = dim.w + dim.gap;
+        let adjustedDx = dx;
+
+        // Rubber band at edges
+        if ((currentCardIndex === 0 && dx > 0) ||
+            (currentCardIndex === cards.length - 1 && dx < 0)) {
+          adjustedDx = dx * 0.3;
+        }
+
+        const offset = -currentCardIndex * cardW + adjustedDx;
+        cardTrack.style.transform = `translateX(${offset}px)`;
+      },
+      onEnd(dx, dy, vx) {
+        cardTrack.classList.remove('dragging');
+        const dim = getCardDimensions();
+        const threshold = dim.w * 0.2;
+
+        if ((dx < -threshold || vx < -600) && currentCardIndex < cards.length - 1) {
+          currentCardIndex++;
+        } else if ((dx > threshold || vx > 600) && currentCardIndex > 0) {
+          currentCardIndex--;
+        }
+
+        positionTrack(true);
+        updateDots();
+      }
+    });
+  }
+
+  function positionTrack(animate) {
+    const dim = getCardDimensions();
+    const cardW = dim.w + dim.gap;
+    const offset = -currentCardIndex * cardW;
+
+    if (!animate) cardTrack.classList.add('dragging');
+    cardTrack.style.transform = `translateX(${offset}px)`;
+    if (!animate) requestAnimationFrame(() => cardTrack.classList.remove('dragging'));
+  }
+
+  // ── Dots ──
+  let dotsContainer = null;
+
+  function renderDots() {
+    if (dotsContainer) dotsContainer.remove();
+    if (cards.length <= 1) return;
+
+    dotsContainer = document.createElement('div');
+    dotsContainer.className = 'card-dots';
+    cards.forEach((_, i) => {
+      const dot = document.createElement('div');
+      dot.className = 'card-dot' + (i === currentCardIndex ? ' active' : '');
+      dotsContainer.appendChild(dot);
+    });
+    document.getElementById('app').appendChild(dotsContainer);
+  }
+
+  function updateDots() {
+    if (!dotsContainer) return;
+    dotsContainer.querySelectorAll('.card-dot').forEach((dot, i) => {
+      dot.classList.toggle('active', i === currentCardIndex);
+    });
+  }
 
   // ── Photo Viewer ──
-  function openViewer(index) {
-    currentPhotoIndex = index;
-    chromeVisible = true;
-    viewerHeader.classList.remove('hidden');
-    viewerFooter.classList.remove('hidden');
 
-    renderViewerSlides();
-    updateViewerChrome();
-    positionTrack(false);
+  let currentViewerPhotos = [];
+  let currentViewerIndex = 0;
 
-    viewerScreen.classList.add('active');
+  function openPhotoViewer(photo, roll) {
+    currentViewerPhotos = roll.photos;
+    currentViewerIndex = roll.photos.indexOf(photo);
+
+    photoViewerImg.src = getPhotoSrc(photo, true);
+    photoViewer.classList.add('active');
 
     setupViewerGestures();
   }
 
-  function renderViewerSlides() {
-    viewerTrack.innerHTML = '';
-    currentCamera.photos.forEach((photo, idx) => {
-      const slide = document.createElement('div');
-      slide.className = 'viewer-slide';
-      slide.dataset.index = idx;
-      const img = document.createElement('img');
-      img.src = getPhotoSrcHiRes(photo);
-      img.alt = photo.caption;
-      img.draggable = false;
-      slide.appendChild(img);
-      viewerTrack.appendChild(slide);
-    });
-  }
-
-  function positionTrack(animate = true) {
-    if (!animate) viewerTrack.classList.add('dragging');
-    viewerTrack.style.transform = `translateX(-${currentPhotoIndex * 100}%)`;
-    if (!animate) {
-      requestAnimationFrame(() => viewerTrack.classList.remove('dragging'));
-    }
-  }
-
-  function updateViewerChrome() {
-    const photo = currentCamera.photos[currentPhotoIndex];
-    viewerMeta.innerHTML = `
-      <div class="viewer-meta-camera">${currentCamera.name}</div>
-      <div class="viewer-meta-film">${currentCamera.filmStock} · ${photo.date}</div>
-    `;
-    viewerCaption.textContent = photo.caption;
-    viewerCounter.textContent = `${currentPhotoIndex + 1} / ${currentCamera.photos.length}`;
-  }
-
-  function toggleChrome() {
-    chromeVisible = !chromeVisible;
-    viewerHeader.classList.toggle('hidden', !chromeVisible);
-    viewerFooter.classList.toggle('hidden', !chromeVisible);
-  }
-
-  function closeViewer() {
-    viewerScreen.style.transition = 'opacity 0.3s ease, transform 0.3s ease';
-    viewerScreen.style.opacity = '0';
-    viewerScreen.style.transform = 'scale(0.95)';
-
+  function closePhotoViewer() {
+    photoViewer.classList.add('dismissing');
     setTimeout(() => {
-      viewerScreen.classList.remove('active');
-      viewerScreen.style.transition = '';
-      viewerScreen.style.opacity = '';
-      viewerScreen.style.transform = '';
-      viewerTrack.innerHTML = '';
-      cleanupViewerGestures();
-    }, 300);
+      photoViewer.classList.remove('active', 'dismissing');
+      photoViewerImg.src = '';
+      if (viewerSwipeHandler) {
+        viewerSwipeHandler.destroy();
+        viewerSwipeHandler = null;
+      }
+    }, 250);
   }
 
-  viewerCloseBtn.addEventListener('click', closeViewer);
-
-  // ── Viewer Gestures ──
   function setupViewerGestures() {
-    cleanupViewerGestures();
+    if (viewerSwipeHandler) viewerSwipeHandler.destroy();
 
-    const totalSlides = currentCamera.photos.length;
+    // Tap to dismiss
+    new TapHandler(photoViewer, {
+      onTap() {
+        closePhotoViewer();
+      }
+    });
 
     // Horizontal swipe between photos
-    viewerSwipe = new SwipeHandler(viewerContainer, {
+    viewerSwipeHandler = new SwipeHandler(photoViewerImgWrap, {
       direction: 'horizontal',
       onStart() {
-        viewerTrack.classList.add('dragging');
-        // Reset zoom on swipe start
-        if (viewerPinch && viewerPinch.scale > 1) {
-          viewerPinch.resetZoom();
-          resetSlideTransforms();
-        }
+        photoViewerImg.classList.add('dragging');
       },
       onMove(dx) {
-        // Add resistance at edges
-        let adjustedDx = dx;
-        if ((currentPhotoIndex === 0 && dx > 0) ||
-            (currentPhotoIndex === totalSlides - 1 && dx < 0)) {
-          adjustedDx = dx * 0.3; // rubber band
-        }
-        const offset = -currentPhotoIndex * viewerContainer.offsetWidth + adjustedDx;
-        viewerTrack.style.transform = `translateX(${offset}px)`;
+        photoViewerImg.style.transform = `translateX(${dx}px) rotate(${dx * 0.02}deg)`;
       },
       onEnd(dx, dy, vx) {
-        viewerTrack.classList.remove('dragging');
-        const threshold = viewerContainer.offsetWidth * 0.25;
+        photoViewerImg.classList.remove('dragging');
+        const threshold = 80;
 
-        if ((dx < -threshold || vx < -800) && currentPhotoIndex < totalSlides - 1) {
-          currentPhotoIndex++;
-          updateViewerChrome();
-        } else if ((dx > threshold || vx > 800) && currentPhotoIndex > 0) {
-          currentPhotoIndex--;
-          updateViewerChrome();
+        if ((dx < -threshold || vx < -500) && currentViewerIndex < currentViewerPhotos.length - 1) {
+          // Animate out left
+          photoViewerImg.style.transition = 'transform 0.25s ease';
+          photoViewerImg.style.transform = `translateX(-${window.innerWidth}px) rotate(-15deg)`;
+          setTimeout(() => {
+            currentViewerIndex++;
+            photoViewerImg.src = getPhotoSrc(currentViewerPhotos[currentViewerIndex], true);
+            photoViewerImg.style.transition = 'none';
+            photoViewerImg.style.transform = `translateX(${window.innerWidth}px) rotate(15deg)`;
+            requestAnimationFrame(() => {
+              photoViewerImg.style.transition = 'transform 0.3s cubic-bezier(0.32, 0.72, 0, 1)';
+              photoViewerImg.style.transform = '';
+            });
+          }, 250);
+        } else if ((dx > threshold || vx > 500) && currentViewerIndex > 0) {
+          // Animate out right
+          photoViewerImg.style.transition = 'transform 0.25s ease';
+          photoViewerImg.style.transform = `translateX(${window.innerWidth}px) rotate(15deg)`;
+          setTimeout(() => {
+            currentViewerIndex--;
+            photoViewerImg.src = getPhotoSrc(currentViewerPhotos[currentViewerIndex], true);
+            photoViewerImg.style.transition = 'none';
+            photoViewerImg.style.transform = `translateX(-${window.innerWidth}px) rotate(-15deg)`;
+            requestAnimationFrame(() => {
+              photoViewerImg.style.transition = 'transform 0.3s cubic-bezier(0.32, 0.72, 0, 1)';
+              photoViewerImg.style.transform = '';
+            });
+          }, 250);
+        } else {
+          // Snap back
+          photoViewerImg.style.transition = 'transform 0.3s cubic-bezier(0.32, 0.72, 0, 1)';
+          photoViewerImg.style.transform = '';
         }
 
-        positionTrack(true);
+        setTimeout(() => {
+          photoViewerImg.style.transition = '';
+        }, 350);
       }
     });
 
     // Vertical flick to dismiss
-    viewerDismissSwipe = new SwipeHandler(viewerContainer, {
+    new SwipeHandler(photoViewerImgWrap, {
       direction: 'vertical',
       onStart() {
-        if (viewerPinch && viewerPinch.scale > 1) return;
+        photoViewerImg.classList.add('dragging');
       },
       onMove(dx, dy) {
-        if (viewerPinch && viewerPinch.scale > 1) return;
-        const absDy = Math.abs(dy);
-        const progress = Math.min(absDy / 300, 1);
-        viewerScreen.style.background = `rgba(0,0,0,${1 - progress * 0.6})`;
-
-        const currentSlide = viewerTrack.children[currentPhotoIndex];
-        if (currentSlide) {
-          const img = currentSlide.querySelector('img');
-          img.style.transition = 'none';
-          img.style.transform = `translateY(${dy}px) scale(${1 - progress * 0.15})`;
-        }
+        const progress = Math.min(Math.abs(dy) / 300, 1);
+        photoViewerImg.style.transform = `translateY(${dy}px) scale(${1 - progress * 0.15})`;
+        photoViewerCard.style.opacity = 1 - progress * 0.4;
       },
       onEnd(dx, dy, vx, vy) {
-        if (viewerPinch && viewerPinch.scale > 1) return;
-        const absDy = Math.abs(dy);
-        const absVy = Math.abs(vy);
-
-        if (absDy > 120 || absVy > 600) {
-          // Dismiss
-          const currentSlide = viewerTrack.children[currentPhotoIndex];
-          if (currentSlide) {
-            const img = currentSlide.querySelector('img');
-            const direction = dy > 0 ? 1 : -1;
-            img.style.transition = 'transform 0.3s ease';
-            img.style.transform = `translateY(${direction * window.innerHeight}px) scale(0.8)`;
-          }
-          viewerScreen.style.transition = 'background 0.3s ease';
-          viewerScreen.style.background = 'rgba(0,0,0,0)';
-
+        photoViewerImg.classList.remove('dragging');
+        if (Math.abs(dy) > 100 || Math.abs(vy) > 500) {
+          const dir = dy > 0 ? 1 : -1;
+          photoViewerImg.style.transition = 'transform 0.25s ease';
+          photoViewerImg.style.transform = `translateY(${dir * window.innerHeight}px) scale(0.8)`;
           setTimeout(() => {
-            closeViewer();
-            viewerScreen.style.background = '';
-            viewerScreen.style.transition = '';
-            resetSlideTransforms();
-          }, 250);
+            closePhotoViewer();
+            photoViewerImg.style.transition = '';
+            photoViewerImg.style.transform = '';
+            photoViewerCard.style.opacity = '';
+          }, 200);
         } else {
-          // Snap back
-          viewerScreen.style.transition = 'background 0.3s ease';
-          viewerScreen.style.background = '#000';
-          const currentSlide = viewerTrack.children[currentPhotoIndex];
-          if (currentSlide) {
-            const img = currentSlide.querySelector('img');
-            img.style.transition = 'transform 0.25s ease';
-            img.style.transform = '';
-          }
+          photoViewerImg.style.transition = 'transform 0.3s cubic-bezier(0.32, 0.72, 0, 1)';
+          photoViewerImg.style.transform = '';
+          photoViewerCard.style.opacity = '';
           setTimeout(() => {
-            viewerScreen.style.transition = '';
+            photoViewerImg.style.transition = '';
           }, 300);
         }
       }
     });
-
-    // Pinch zoom + double-tap + tap-to-toggle
-    const slides = viewerTrack.querySelectorAll('.viewer-slide');
-    slides.forEach((slide) => {
-      const img = slide.querySelector('img');
-
-      const handler = new PinchZoomHandler(slide, {
-        onZoomChange(scale, tx, ty, panning) {
-          if (panning) {
-            img.classList.add('zooming');
-          } else {
-            img.classList.remove('zooming');
-          }
-          img.style.transform = `scale(${scale}) translate(${tx / scale}px, ${ty / scale}px)`;
-        },
-        onDoubleTap(x, y) {
-          // Visual feedback ring
-          const ring = document.createElement('div');
-          ring.className = 'zoom-ring';
-          ring.style.left = (x - 40) + 'px';
-          ring.style.top = (y - 40) + 'px';
-          slide.appendChild(ring);
-          setTimeout(() => ring.remove(), 400);
-        },
-        onTap() {
-          toggleChrome();
-        }
-      });
-
-      // Store reference for cleanup
-      slide._pinchHandler = handler;
-    });
-
-    viewerPinch = slides[currentPhotoIndex]?._pinchHandler;
-  }
-
-  function resetSlideTransforms() {
-    viewerTrack.querySelectorAll('.viewer-slide img').forEach(img => {
-      img.style.transform = '';
-      img.style.transition = '';
-      img.classList.remove('zooming');
-    });
-  }
-
-  function cleanupViewerGestures() {
-    viewerSwipe = null;
-    viewerDismissSwipe = null;
-    viewerPinch = null;
   }
 
   // ── Init ──
-  renderHome();
+  buildCards();
+  renderCards();
+  setupCardSwipe();
+
+  window.addEventListener('resize', () => {
+    renderCards();
+    setupCardSwipe();
+  });
 
 })();

@@ -10,54 +10,38 @@
 </head>
 <body>
   <div id="app">
-    <!-- Home Screen -->
-    <div id="home-screen" class="screen active">
-      <header class="home-header">
-        <h1 class="logo">ana<span class="logo-underscore">_</span>log</h1>
-        <p class="subtitle">your film, organised</p>
-      </header>
-      <div id="camera-list" class="camera-list"></div>
-    </div>
+    <!-- Top bar -->
+    <header class="top-bar">
+      <button class="top-btn" id="close-btn">
+        <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+          <path d="M14 4L4 14M4 4L14 14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+        </svg>
+      </button>
+      <h1 class="app-title">ana_log</h1>
+      <button class="top-btn" id="menu-btn">
+        <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+          <circle cx="4" cy="9" r="1.5" fill="currentColor"/>
+          <circle cx="9" cy="9" r="1.5" fill="currentColor"/>
+          <circle cx="14" cy="9" r="1.5" fill="currentColor"/>
+        </svg>
+      </button>
+    </header>
 
-    <!-- Camera Detail Screen -->
-    <div id="camera-screen" class="screen">
-      <header class="camera-header">
-        <button class="back-btn" id="camera-back-btn">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-            <path d="M15 18L9 12L15 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-          </svg>
-        </button>
-        <div class="camera-header-info">
-          <h2 id="camera-title" class="camera-title"></h2>
-          <p id="camera-subtitle" class="camera-subtitle"></p>
-        </div>
-        <div class="header-spacer"></div>
-      </header>
-      <div id="photo-grid" class="photo-grid"></div>
-    </div>
-
-    <!-- Photo Viewer -->
-    <div id="viewer-screen" class="screen viewer-screen">
-      <header class="viewer-header" id="viewer-header">
-        <button class="back-btn viewer-close-btn" id="viewer-close-btn">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-            <path d="M18 6L6 18M6 6L18 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-          </svg>
-        </button>
-        <div class="viewer-meta" id="viewer-meta"></div>
-        <div class="header-spacer"></div>
-      </header>
-      <div class="viewer-container" id="viewer-container">
-        <div class="viewer-track" id="viewer-track"></div>
+    <!-- Main content area — horizontal swipe between cards -->
+    <div class="card-viewport" id="card-viewport">
+      <div class="card-track" id="card-track">
+        <!-- Cards rendered by JS -->
       </div>
-      <footer class="viewer-footer" id="viewer-footer">
-        <div class="viewer-caption" id="viewer-caption"></div>
-        <div class="viewer-counter" id="viewer-counter"></div>
-      </footer>
     </div>
 
-    <!-- Film grain overlay -->
-    <div class="grain-overlay"></div>
+    <!-- Photo viewer overlay -->
+    <div class="photo-viewer" id="photo-viewer">
+      <div class="photo-viewer-card" id="photo-viewer-card">
+        <div class="photo-viewer-img-wrap" id="photo-viewer-img-wrap">
+          <img id="photo-viewer-img" src="" alt="">
+        </div>
+      </div>
+    </div>
   </div>
 
   <script src="data.js"></script>
