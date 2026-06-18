@@ -1,60 +1,88 @@
 import os
-import requests
-from bs4 import BeautifulSoup
+import asyncio
+from playwright.async_api import async_playwright
 
-# The Currys product URL
 URL = "https://www.currys.co.uk/products/samsung-galaxy-s25-256-gb-blueblack-10288830.html"
+FOLDER = "galaxy_s25_images"
 
-# Headers to make the scraper look like a real web browser
-HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-    "Accept-Language": "en-GB,en;q=0.9"
-}
 
-def download_images():
-    # 1. Create a folder to save the images locally
-    folder_name = "galaxy_s25_images"
-    if not os.path.exists(folder_name):
-        os.makedirs(folder_name)
+async def download_images():
+    os.makedirs(FOLDER, exist_ok=True)
 
-    # 2. Fetch the webpage
-    print("Fetching the webpage from Currys...")
-    response = requests.get(URL, headers=HEADERS)
+    async with async_playwright() as p:
+        browser = await p.chromium.launch(headless=True)
+        context = await browser.new_context(
+            user_agent=(
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/120.0.0.0 Safari/537.36"
+            ),
+            locale="en-GB",
+            viewport={"width": 1280, "height": 900},
+        )
 
-    if response.status_code != 200:
-        print(f"Failed to retrieve page. Status code: {response.status_code}")
-        print("Currys might be blocking the request with Cloudflare.")
-        return
+        page = await context.new_page()
 
-    # 3. Parse the HTML content
-    soup = BeautifulSoup(response.text, "html.parser")
+        print("Navigating to Currys product page...")
+        await page.goto(URL, wait_until="networkidle", timeout=60000)
 
-    # 4. Find all image tags
-    img_tags = soup.find_all("img")
-    print(f"Found {len(img_tags)} total images on the page. Filtering for product images...")
+        # Accept cookies if the banner appears
+        try:
+            await page.click("button:has-text('Accept')", timeout=5000)
+            print("Accepted cookie banner.")
+        except Exception:
+            pass  # No banner, carry on
 
-    count = 1
-    for img in img_tags:
-        # Many modern sites use 'data-src' or 'srcset' for lazy loading, so we check multiple attributes
-        img_url = img.get("src") or img.get("data-src")
+        # Wait for product images to load
+        await page.wait_for_selector("img", timeout=15000)
 
-        # Filter for valid URLs that are likely to be high-res product photos
-        if img_url and img_url.startswith("http"):
-            # We want to skip small UI icons, logos, or tracking pixels
-            if "media" in img_url.lower() or "product" in img_url.lower():
-                print(f"Downloading: {img_url}")
-                try:
-                    # Download the actual image file
-                    img_data = requests.get(img_url, headers=HEADERS).content
-                    filename = f"{folder_name}/s25_blueblack_{count}.jpg"
+        # Collect image URLs from all img tags (src + data-src + srcset)
+        img_urls = await page.evaluate("""() => {
+            const imgs = Array.from(document.querySelectorAll('img'));
+            const urls = new Set();
+            for (const img of imgs) {
+                for (const attr of ['src', 'data-src']) {
+                    const v = img.getAttribute(attr);
+                    if (v && v.startsWith('http')) urls.add(v);
+                }
+                const srcset = img.getAttribute('srcset');
+                if (srcset) {
+                    for (const part of srcset.split(',')) {
+                        const url = part.trim().split(' ')[0];
+                        if (url.startsWith('http')) urls.add(url);
+                    }
+                }
+            }
+            return Array.from(urls);
+        }""")
 
-                    with open(filename, "wb") as file:
-                        file.write(img_data)
+        # Filter for likely product images
+        product_urls = [
+            u for u in img_urls
+            if any(kw in u.lower() for kw in ("media", "product", "s25", "galaxy", "samsung"))
+        ]
+
+        print(f"Found {len(product_urls)} candidate product image URLs.")
+
+        count = 0
+        for url in product_urls:
+            print(f"Downloading: {url}")
+            try:
+                response = await context.request.get(url)
+                if response.ok:
                     count += 1
-                except Exception as e:
-                    print(f"Could not download {img_url}: {e}")
+                    filename = os.path.join(FOLDER, f"s25_blueblack_{count}.jpg")
+                    with open(filename, "wb") as f:
+                        f.write(await response.body())
+                else:
+                    print(f"  Skipped (status {response.status})")
+            except Exception as e:
+                print(f"  Error: {e}")
 
-    print(f"\nSuccess! Downloaded {count - 1} images to the '{folder_name}' folder.")
+        await browser.close()
+
+    print(f"\nDone! Downloaded {count} images to '{FOLDER}/'.")
+
 
 if __name__ == "__main__":
-    download_images()
+    asyncio.run(download_images())
