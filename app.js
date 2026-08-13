@@ -1,646 +1,836 @@
-// ── ana_log App (Motion-powered) ──
+// ── ana_log ──
 
 (function () {
   'use strict';
 
-  const { animate, spring } = Motion;
+  const M = window.Motion;
+  const G = window.Gestures;
 
-  // ── Spring Configs (from design-motion-principles) ──
-  const SPRING_SETTLE = { type: 'spring', stiffness: 300, damping: 30, mass: 1 };
-  const SPRING_ENTER = { type: 'spring', duration: 0.45, bounce: 0 };
-  const SPRING_SOFT = { type: 'spring', stiffness: 200, damping: 25, mass: 1 };
-  const EASE_SHEET = [0.32, 0.72, 0, 1];
-  const DISMISS_VELOCITY = 0.11;
+  // ── Tunables ──
+  // Ratios are of screen width, so they hold across device sizes. Paging has
+  // no threshold of its own — it snaps to whichever page the momentum was
+  // aiming at (see the pager's onEnd).
+  const BACK_COMMIT = 0.38;      // projected travel that commits a back swipe
+  const PARALLAX = 0.28;         // how far the outgoing screen trails behind
+  const FLICK_VELOCITY = 420;    // px/s that commits a back swipe outright
+  const EXPAND_PULL = 68;        // px of pull that opens a photo stack
 
-  // ── State ──
-  let currentCardIndex = 0;
-  let navigationStack = [];
-  let cards = [];
+  const screensEl = document.getElementById('screens');
+  const viewerEl = document.getElementById('photo-viewer');
+  const scrimEl = document.getElementById('viewer-scrim');
+  const stageEl = document.getElementById('viewer-stage');
+  const trackEl = document.getElementById('viewer-track');
 
-  // ── Elements ──
-  const cardViewport = document.getElementById('card-viewport');
-  const cardTrack = document.getElementById('card-track');
-  const photoViewer = document.getElementById('photo-viewer');
-  const photoViewerInner = document.getElementById('photo-viewer-inner');
-  const photoViewerImg = document.getElementById('photo-viewer-img');
+  const screens = [];
+  let width = window.innerWidth;
+  let height = window.innerHeight;
+
+  function el(tag, className) {
+    const n = document.createElement(tag);
+    if (className) n.className = className;
+    return n;
+  }
+
+  // Stagger helper that collapses to zero when the user asked for less motion.
+  function stagger(i, step) {
+    return M.reduceMotion ? 0 : i * (step || 35);
+  }
 
   // ── Scattered position generator ──
+  // Rejection sampling that keeps the *best* candidate rather than the first
+  // acceptable one. The previous version accepted anything more than half an
+  // item apart, which permits 50% overlap, and gave up after 30 tries by
+  // dropping the item in the top-left corner. Scoring every candidate by its
+  // distance to the nearest neighbour means a crowded card degrades to "as
+  // evenly spread as it can be" instead of a pile.
   function scatterPositions(count, areaW, areaH, itemW, itemH, seed) {
     const rng = mulberry32(seed);
     const positions = [];
-    const padX = 20, padY = 60;
-    const usableW = areaW - itemW - padX * 2;
-    const usableH = areaH - itemH - padY - 80;
+    const padX = 18;
+    const padTop = 104;   // clear of the breadcrumb + title
+    const padBottom = 88; // clear of the add button and dots
+    const usableW = Math.max(0, areaW - itemW - padX * 2);
+    const usableH = Math.max(0, areaH - itemH - padTop - padBottom);
 
     for (let i = 0; i < count; i++) {
-      let x, y, attempts = 0, ok = false;
-      while (attempts < 30) {
-        x = padX + rng() * usableW;
-        y = padY + rng() * usableH;
-        ok = true;
+      // Alternate which half of the card each item is drawn from. A card is
+      // much taller than it is wide, so pure max-distance sampling satisfies
+      // itself by walking straight down and the result reads as a column.
+      // Banding forces the zig-zag that makes it look hand-scattered.
+      const band = (i % 2) * 0.5;
+      let best = { x: padX, y: padTop };
+      let bestScore = -Infinity;
+
+      for (let attempt = 0; attempt < 48; attempt++) {
+        const x = padX + (band + rng() * 0.5) * usableW;
+        const y = padTop + rng() * usableH;
+
+        let nearest = Infinity;
         for (const p of positions) {
-          if (Math.abs(x - p.x) < itemW * 0.5 && Math.abs(y - p.y) < itemH * 0.5) {
-            ok = false; break;
-          }
+          // Normalised by item size so wide and tall items are judged alike.
+          const dx = (x - p.x) / itemW;
+          const dy = (y - p.y) / itemH;
+          const d = Math.sqrt(dx * dx + dy * dy);
+          if (d < nearest) nearest = d;
         }
-        if (ok) break;
-        attempts++;
+        if (nearest > bestScore) { bestScore = nearest; best = { x: x, y: y }; }
       }
-      const rotation = (rng() - 0.5) * 20;
-      positions.push({ x: x || padX, y: y || padY, rotation });
+
+      positions.push({ x: best.x, y: best.y, rotation: (rng() - 0.5) * 18 });
     }
     return positions;
   }
 
-  // ── Card building ──
-  function buildCards() {
-    cards = [
-      { type: 'cameras', title: 'my cameras' },
-      { type: 'film', title: 'my film' },
-    ];
-  }
+  // ── Screen ──
+  // One level of navigation. Owns its cards, its horizontal pager, and the
+  // dim overlay that darkens it while a child screen sits on top.
+  class Screen {
+    constructor(spec) {
+      this.spec = spec;
+      this.cards = spec.cards;
+      this.index = 0;
+      this.placed = [];   // scattered items, kept so they can be reclamped
 
-  function getCardDimensions() {
-    return { w: window.innerWidth, h: cardViewport.offsetHeight, gap: 0 };
-  }
+      this.el = el('div', 'screen');
+      this.anim = new M.Animated(this.el);
 
-  // ── Render cards ──
-  function renderCards() {
-    cardTrack.innerHTML = '';
+      this.trackEl = el('div', 'card-track');
+      this.trackAnim = new M.Animated(this.trackEl);
+      this.el.appendChild(this.trackEl);
 
-    cards.forEach((card, idx) => {
-      const el = document.createElement('div');
-      el.className = 'content-card';
-      el.dataset.index = idx;
+      this.cards.forEach((card, i) => {
+        this.trackEl.appendChild(this.buildCard(card, i));
+      });
 
-      const inner = document.createElement('div');
-      inner.className = 'card-inner';
+      this.dimEl = el('div', 'screen-dim');
+      this.dimAnim = new M.Animated(this.dimEl, { opacity: 0 });
+      this.el.appendChild(this.dimEl);
 
-      // Breadcrumbs
-      if (navigationStack.length > 0) {
-        const bc = document.createElement('div');
-        bc.className = 'breadcrumb';
-        navigationStack.forEach((item, i) => {
-          const span = document.createElement('span');
-          span.className = 'breadcrumb-item';
-          span.textContent = item.title;
-          span.addEventListener('click', () => navigateBack(i));
+      if (this.cards.length > 1) this.buildDots();
+
+      this.setupPager();
+      this.setupEdgeBack();
+    }
+
+    // ── Card construction ──
+    buildCard(card) {
+      const cardEl = el('div', 'content-card');
+      const inner = el('div', 'card-inner');
+      cardEl.appendChild(inner);
+
+      if (this.spec.trail && this.spec.trail.length) {
+        const bc = el('div', 'breadcrumb');
+        this.spec.trail.forEach((item, i) => {
+          const span = el('span', 'breadcrumb-item');
+          span.textContent = item;
+          new G.Drag(span, {
+            axis: 'none',
+            onTap: () => popTo(i),
+          });
           bc.appendChild(span);
         });
         inner.appendChild(bc);
       }
 
-      // Title
       if (card.title) {
-        const title = document.createElement('div');
-        title.className = 'card-title';
+        const title = el('div', 'card-title');
         title.textContent = card.title + (card.flag ? ' ' + card.flag : '');
         inner.appendChild(title);
       }
 
-      // Content
-      if (card.type === 'cameras') renderCamerasContent(inner, card);
-      else if (card.type === 'film') renderFilmContent(inner, card);
-      else if (card.type === 'camera-detail') renderCameraDetailContent(inner, card);
-      else if (card.type === 'roll-detail') renderRollDetailContent(inner, card);
+      if (card.type === 'cameras') this.renderCameras(inner);
+      else if (card.type === 'film') this.renderFilm(inner);
+      else if (card.type === 'camera-detail') this.renderCameraDetail(inner, card);
+      else if (card.type === 'roll-detail') this.renderRollDetail(inner, card);
 
-      // Add button
-      const addBtn = document.createElement('button');
-      addBtn.className = 'add-btn';
+      const addBtn = el('button', 'add-btn');
       addBtn.textContent = 'add';
-      setupPressFeedback(addBtn);
-      inner.appendChild(addBtn);
-
-      el.appendChild(inner);
-      cardTrack.appendChild(el);
-    });
-
-    renderDots();
-    positionTrack(false);
-  }
-
-  // ── Staggered enter animation ──
-  function animateItemsIn(inner) {
-    const items = inner.querySelectorAll('.scattered-item, .photo-stack');
-    items.forEach((item, i) => {
-      item.style.opacity = '0';
-      item.style.transform += ' scale(0.85)';
-      animate(item, { opacity: 1, scale: 1 }, {
-        delay: i * 0.04,
-        ...SPRING_ENTER,
+      const addAnim = new M.Animated(addBtn);
+      const addPress = G.press(addAnim);
+      new G.Drag(addBtn, {
+        axis: 'none',
+        onPressStart: addPress.start,
+        onPressEnd: addPress.end,
       });
-    });
-  }
+      inner.appendChild(addBtn);
+      return cardEl;
+    }
 
-  // ── Press feedback (scale 0.97) ──
-  function setupPressFeedback(el) {
-    el.addEventListener('touchstart', () => {
-      animate(el, { scale: 0.97 }, { duration: 0.1 });
-    }, { passive: true });
-    el.addEventListener('touchend', () => {
-      animate(el, { scale: 1 }, SPRING_SETTLE);
-    }, { passive: true });
-    el.addEventListener('touchcancel', () => {
-      animate(el, { scale: 1 }, SPRING_SETTLE);
-    }, { passive: true });
-  }
+    // Scattered objects share the same setup: laid out with left/top, with
+    // rotation and everything else driven through one Animated so a press
+    // scale can never wipe out the layout rotation.
+    placeItem(node, pos, inner) {
+      node.style.left = pos.x + 'px';
+      node.style.top = pos.y + 'px';
+      const anim = new M.Animated(node, {
+        rotate: pos.rotation,
+        scale: 0.86,
+        opacity: 0,
+        y: 10,
+      });
+      inner.appendChild(node);
+      this.placed.push({ node: node, pos: pos });
+      return anim;
+    }
 
-  // ── Camera content ──
-  function renderCamerasContent(inner, card) {
-    const rect = getCardDimensions();
-    const positions = scatterPositions(CAMERAS.length, rect.w, rect.h, 140, 120, 42);
+    enter(anim, i) {
+      setTimeout(() => {
+        anim.to({ opacity: 1, scale: 1, y: 0 }, { config: M.GENTLE });
+      }, stagger(i, 38));
+    }
 
-    CAMERAS.forEach((camera, i) => {
-      const pos = positions[i];
-      const item = document.createElement('div');
-      item.className = 'scattered-item camera-obj';
-      item.style.left = pos.x + 'px';
-      item.style.top = pos.y + 'px';
-      item.style.transform = `rotate(${pos.rotation}deg)`;
+    renderCameras(inner) {
+      // Sizes here are the item's real footprint including the room its
+      // rotation needs, not the CSS width — the sampler spaces by them.
+      const positions = scatterPositions(CAMERAS.length, width, height, 160, 130, 42);
+      CAMERAS.forEach((camera, i) => {
+        const item = el('div', 'scattered-item camera-obj');
+        const img = el('img');
+        img.src = getCameraIcon(camera);
+        img.alt = camera.name;
+        img.draggable = false;
+        item.appendChild(img);
 
-      const img = document.createElement('img');
-      img.src = getCameraIcon(camera);
-      img.alt = camera.name;
-      img.draggable = false;
-      item.appendChild(img);
+        const anim = this.placeItem(item, positions[i], inner);
+        const p = G.press(anim);
+        new G.Drag(item, {
+          axis: 'none',            // horizontal drags fall through to the pager
+          onPressStart: p.start,
+          onPressEnd: p.end,
+          onTap: () => {
+            M.haptic(6);
+            pushCamera(camera);
+          },
+        });
+        this.enter(anim, i);
+      });
+    }
 
-      setupPressFeedback(item);
-      item.addEventListener('click', () => drillIntoCamera(camera));
-      inner.appendChild(item);
-    });
+    renderFilm(inner) {
+      const positions = scatterPositions(FILM_STOCKS.length, width, height, 140, 155, 77);
+      FILM_STOCKS.forEach((film, i) => {
+        const item = el('div', 'scattered-item film-obj');
+        const img = el('img');
+        img.src = getFilmIcon(film);
+        img.alt = film.name;
+        img.draggable = false;
+        item.appendChild(img);
 
-    requestAnimationFrame(() => animateItemsIn(inner));
-  }
+        const anim = this.placeItem(item, positions[i], inner);
+        const p = G.press(anim);
+        new G.Drag(item, {
+          axis: 'none',
+          onPressStart: p.start,
+          onPressEnd: p.end,
+        });
+        this.enter(anim, i);
+      });
+    }
 
-  // ── Film content ──
-  function renderFilmContent(inner, card) {
-    const rect = getCardDimensions();
-    const positions = scatterPositions(FILM_STOCKS.length, rect.w, rect.h, 120, 140, 77);
+    renderCameraDetail(inner, card) {
+      const camera = card.camera;
+      // 140 of polaroid plus fan spread, and 188 tall plus the label below it.
+      const positions = scatterPositions(
+        camera.rolls.length, width, height, 165, 225, hashStr(camera.id + 'detail')
+      );
 
-    FILM_STOCKS.forEach((film, i) => {
-      const pos = positions[i];
-      const item = document.createElement('div');
-      item.className = 'scattered-item film-obj';
-      item.style.left = pos.x + 'px';
-      item.style.top = pos.y + 'px';
-      item.style.transform = `rotate(${pos.rotation}deg)`;
+      camera.rolls.forEach((roll, i) => {
+        const stack = el('div', 'photo-stack');
+        const polaroids = [];
 
-      const img = document.createElement('img');
-      img.src = getFilmIcon(film);
-      img.alt = film.name;
-      img.draggable = false;
-      item.appendChild(img);
+        roll.photos.slice(0, 3).forEach((photo, j) => {
+          const pol = el('div', 'polaroid');
+          const img = el('img');
+          img.src = getPhotoSrc(photo, false);
+          img.alt = '';
+          img.draggable = false;
+          pol.appendChild(img);
+          stack.appendChild(pol);
+          // Resting fan — each layer sits slightly rotated and offset.
+          const base = { rotate: (j - 1) * 4, x: (j - 1) * 3, y: (j - 1) * 3 };
+          polaroids.push({ el: pol, base: base, anim: new M.Animated(pol, base) });
+        });
 
-      inner.appendChild(item);
-    });
+        const label = el('div', 'stack-label');
+        label.textContent = roll.title + (roll.flag ? ' ' + roll.flag : '');
+        stack.appendChild(label);
 
-    requestAnimationFrame(() => animateItemsIn(inner));
-  }
+        const anim = this.placeItem(stack, positions[i], inner);
+        setupStack(stack, anim, polaroids, positions[i], camera, roll);
+        this.enter(anim, i);
+      });
+    }
 
-  // ── Camera detail (photo stacks with drag-to-expand) ──
-  function renderCameraDetailContent(inner, card) {
-    const camera = card.camera;
-    const rect = getCardDimensions();
-    const positions = scatterPositions(camera.rolls.length, rect.w, rect.h, 180, 200, hashStr(camera.id + 'detail'));
+    renderRollDetail(inner, card) {
+      const roll = card.roll;
+      const positions = scatterPositions(
+        roll.photos.length, width, height, 155, 200, hashStr(roll.id)
+      );
 
-    camera.rolls.forEach((roll, i) => {
-      const pos = positions[i];
-      const stack = document.createElement('div');
-      stack.className = 'photo-stack';
-      stack.style.left = pos.x + 'px';
-      stack.style.top = pos.y + 'px';
-      stack.style.transform = `rotate(${pos.rotation}deg)`;
-
-      // Create polaroid layers for the stack
-      const previewPhotos = roll.photos.slice(0, 3);
-      const polaroids = [];
-      previewPhotos.forEach((photo, j) => {
-        const pol = document.createElement('div');
-        pol.className = 'polaroid';
-        pol.style.transform = `rotate(${(j - 1) * 4}deg) translate(${(j - 1) * 3}px, ${(j - 1) * 3}px)`;
-        const img = document.createElement('img');
+      roll.photos.forEach((photo, i) => {
+        const item = el('div', 'scattered-item scattered-polaroid');
+        if (i % 3 === 0) item.classList.add('large');
+        const pol = el('div', 'polaroid');
+        const img = el('img');
         img.src = getPhotoSrc(photo, false);
         img.alt = '';
         img.draggable = false;
         pol.appendChild(img);
-        stack.appendChild(pol);
-        polaroids.push(pol);
+        item.appendChild(pol);
+
+        const anim = this.placeItem(item, positions[i], inner);
+        const p = G.press(anim);
+        new G.Drag(item, {
+          axis: 'none',
+          onPressStart: p.start,
+          onPressEnd: p.end,
+          onTap: () => openViewer(roll, i, item),
+        });
+        this.enter(anim, i);
       });
+    }
 
-      // Roll label
-      const label = document.createElement('div');
-      label.className = 'stack-label';
-      label.textContent = roll.title + (roll.flag ? ' ' + roll.flag : '');
-      stack.appendChild(label);
+    // ── Dots ──
+    buildDots() {
+      this.dotsEl = el('div', 'card-dots');
+      this.dots = this.cards.map((_, i) => {
+        const dot = el('div', 'card-dot' + (i === 0 ? ' active' : ''));
+        this.dotsEl.appendChild(dot);
+        return dot;
+      });
+      this.el.appendChild(this.dotsEl);
+    }
 
-      // ── Drag-to-expand gesture ──
-      setupDragToExpand(stack, polaroids, camera, roll, pos);
+    syncDots() {
+      if (!this.dots) return;
+      this.dots.forEach((dot, i) => dot.classList.toggle('active', i === this.index));
+    }
 
-      inner.appendChild(stack);
-    });
+    // ── Horizontal pager ──
+    setupPager() {
+      if (this.cards.length <= 1) return;
 
-    requestAnimationFrame(() => animateItemsIn(inner));
+      this.pagerDrag = new G.Drag(this.el, {
+        axis: 'x',
+        onStart: () => {
+          // Take over whatever the release spring was doing rather than
+          // snapping to its target — this is what lets you catch a page
+          // mid-flight and keep dragging from exactly where it is.
+          this.trackAnim.stop();
+          this.dragOrigin = this.trackAnim.get('x');
+        },
+        onMove: (s) => {
+          const min = -(this.cards.length - 1) * width;
+          let x = this.dragOrigin + s.dx;
+          // Past either end, resistance builds instead of sliding free.
+          if (x > 0) x = M.rubberBand(x, width);
+          else if (x < min) x = min + M.rubberBand(x - min, width);
+          this.trackAnim.track({ x: x });
+        },
+        onEnd: (s) => {
+          // Where the momentum is aiming, snapped to the nearest page. Asking
+          // "where would this have coasted to?" handles a slow half-drag and a
+          // short hard flick with the same rule, instead of needing a distance
+          // threshold and a velocity threshold that disagree at the margins.
+          const projected = this.trackAnim.get('x') + M.project(s.vx);
+          let target = Math.round(-projected / width);
+          // One page per gesture — a pager should feel deliberate, not scrub.
+          target = M.clamp(target, this.index - 1, this.index + 1);
+          this.goTo(M.clamp(target, 0, this.cards.length - 1), s.vx);
+        },
+      });
+    }
+
+    goTo(index, velocity) {
+      const changed = index !== this.index;
+      this.index = index;
+      if (changed) M.haptic(8);
+      this.trackAnim.to({ x: -index * width }, {
+        config: M.GLIDE,
+        velocity: velocity || 0,
+      });
+      this.syncDots();
+    }
+
+    // ── Edge-swipe back ──
+    // Lives on a strip inside the screen so it gets first refusal on the
+    // pointer before the pager, which is wired to the screen itself.
+    setupEdgeBack() {
+      if (screens.length === 0) return;   // root screen has nowhere to go
+      this.edgeEl = el('div', 'edge-back-zone');
+      this.el.appendChild(this.edgeEl);
+
+      this.edgeDrag = new G.Drag(this.edgeEl, {
+        axis: 'x',
+        edge: 'left',
+        slop: 4,
+        onStart: () => beginBack(this),
+        onMove: (s) => updateBack(this, s.dx),
+        onEnd: (s) => endBack(this, s),
+      });
+    }
+
+    setVisible(on) {
+      this.el.style.visibility = on ? '' : 'hidden';
+    }
+
+    relayout() {
+      this.trackAnim.set({ x: -this.index * width });
+      // Positions were sampled against the old width. Rather than re-scatter
+      // — which would shuffle the whole card under the user — pull anything
+      // that now hangs off the right edge back into view.
+      this.placed.forEach((item) => {
+        const w = item.node.offsetWidth || 0;
+        item.node.style.left = Math.max(8, Math.min(item.pos.x, width - w - 12)) + 'px';
+      });
+    }
+
+    destroy() {
+      if (this.pagerDrag) this.pagerDrag.destroy();
+      if (this.edgeDrag) this.edgeDrag.destroy();
+      this.el.remove();
+    }
   }
 
-  // ── Drag-to-expand on photo stacks ──
-  function setupDragToExpand(stack, polaroids, camera, roll, homePos) {
-    let startX = 0, startY = 0, dx = 0, dy = 0;
-    let dragging = false, locked = false, startTime = 0;
-    const expandThreshold = 80; // px drag distance to trigger expand
+  // ── Photo stack: pull to fan open ──
+  // Vertical only. A horizontal drag on a stack falls through to the pager,
+  // which is what you want — the stacks cover most of the card.
+  function setupStack(stack, anim, polaroids, home, camera, roll) {
+    const p = G.press(anim);
+    let opening = false;
 
-    function onTouchStart(e) {
-      if (e.touches.length !== 1) return;
-      const t = e.touches[0];
-      startX = t.clientX;
-      startY = t.clientY;
-      dx = 0; dy = 0;
-      dragging = false; locked = false;
-      startTime = Date.now();
-      animate(stack, { scale: 0.97 }, { duration: 0.1 });
+    function fan(progress) {
+      const mid = (polaroids.length - 1) / 2;
+      polaroids.forEach((pol, j) => {
+        const off = j - mid;
+        pol.anim.track({
+          rotate: pol.base.rotate + off * 18 * progress,
+          x: pol.base.x + off * 34 * progress,
+          y: pol.base.y - 12 * progress,
+        });
+      });
     }
 
-    function onTouchMove(e) {
-      if (e.touches.length !== 1) return;
-      const t = e.touches[0];
-      dx = t.clientX - startX;
-      dy = t.clientY - startY;
-
-      if (!locked) {
-        if (Math.abs(dx) < 5 && Math.abs(dy) < 5) return;
-        locked = true;
-        dragging = true;
-      }
-
-      if (dragging) {
-        e.preventDefault();
-        const dist = Math.sqrt(dx * dx + dy * dy);
-        const progress = Math.min(dist / (expandThreshold * 2), 1);
-
-        // Move the stack with the drag
-        stack.style.transform = `translate(${dx * 0.3}px, ${dy * 0.3}px) rotate(${homePos.rotation}deg) scale(${1 + progress * 0.05})`;
-
-        // Fan out polaroids based on drag distance
-        polaroids.forEach((pol, j) => {
-          const angle = ((j - (polaroids.length - 1) / 2)) * progress * 25;
-          const spread = progress * 30;
-          const tx = (j - (polaroids.length - 1) / 2) * spread;
-          const ty = -progress * 15;
-          pol.style.transform = `rotate(${angle}deg) translate(${tx}px, ${ty}px)`;
-        });
-      }
+    function restFan(velocity) {
+      polaroids.forEach((pol) => {
+        pol.anim.to(
+          { rotate: pol.base.rotate, x: pol.base.x, y: pol.base.y },
+          { config: M.SETTLE, velocity: { y: velocity || 0 } }
+        );
+      });
     }
 
-    function onTouchEnd(e) {
-      const elapsed = Date.now() - startTime;
-      const dist = Math.sqrt(dx * dx + dy * dy);
-      const velocity = dist / Math.max(elapsed, 1);
-
-      if (!dragging || (dist < 10 && elapsed < 300)) {
-        // It was a tap, not a drag
-        animate(stack, { scale: 1 }, SPRING_SETTLE);
-        drillIntoRoll(camera, roll);
-        return;
-      }
-
-      if (dist > expandThreshold || velocity > DISMISS_VELOCITY) {
-        // Expand — animate fan out then drill in
-        animate(stack, { scale: 1.1, opacity: 0 }, {
-          duration: 0.2,
-          easing: EASE_SHEET,
+    new G.Drag(stack, {
+      axis: 'y',
+      onPressStart: p.start,
+      onPressEnd: p.end,
+      onTap: () => {
+        M.haptic(6);
+        pushRoll(camera, roll);
+      },
+      onStart: () => {
+        anim.stop();
+        polaroids.forEach((pol) => pol.anim.stop());
+      },
+      onMove: (s) => {
+        const progress = M.clamp(Math.abs(s.dy) / EXPAND_PULL, 0, 1);
+        // The stack itself trails the finger at a fraction of the distance,
+        // so it reads as weighty rather than stuck to the cursor.
+        anim.track({
+          y: s.dy * 0.3,
+          scale: 1 + progress * 0.05,
+          rotate: home.rotation,
         });
-        polaroids.forEach((pol, j) => {
-          const angle = ((j - (polaroids.length - 1) / 2)) * 35;
-          const tx = (j - (polaroids.length - 1) / 2) * 60;
-          animate(pol, {
-            transform: `rotate(${angle}deg) translate(${tx}px, -30px)`,
-            opacity: 0,
-          }, { duration: 0.25, easing: EASE_SHEET });
-        });
-        setTimeout(() => drillIntoRoll(camera, roll), 200);
-      } else {
-        // Snap back
-        animate(stack, {
-          transform: `rotate(${homePos.rotation}deg)`,
-          scale: 1,
-        }, SPRING_SETTLE);
-        polaroids.forEach((pol, j) => {
-          animate(pol, {
-            transform: `rotate(${(j - 1) * 4}deg) translate(${(j - 1) * 3}px, ${(j - 1) * 3}px)`,
-          }, SPRING_SETTLE);
-        });
-      }
-      dragging = false;
-    }
+        fan(progress);
+      },
+      onEnd: (s, cancelled) => {
+        const projected = Math.abs(s.dy) + Math.abs(M.project(s.vy)) * 0.5;
+        const commit = !cancelled && (projected > EXPAND_PULL || Math.abs(s.vy) > 700);
 
-    stack.addEventListener('touchstart', onTouchStart, { passive: true });
-    stack.addEventListener('touchmove', onTouchMove, { passive: false });
-    stack.addEventListener('touchend', onTouchEnd, { passive: true });
-    stack.addEventListener('touchcancel', () => {
-      animate(stack, { transform: `rotate(${homePos.rotation}deg)`, scale: 1 }, SPRING_SETTLE);
-      dragging = false;
-    }, { passive: true });
-
-    // Desktop click fallback
-    stack.addEventListener('click', (e) => {
-      if (!('ontouchstart' in window)) {
-        drillIntoRoll(camera, roll);
-      }
+        if (commit && !opening) {
+          opening = true;
+          M.haptic(10);
+          // Carry the fan past the threshold as the screen pushes, so the
+          // stack looks like it's coming apart into the next view.
+          const mid = (polaroids.length - 1) / 2;
+          polaroids.forEach((pol, j) => {
+            const off = j - mid;
+            pol.anim.to({
+              rotate: pol.base.rotate + off * 30,
+              x: pol.base.x + off * 58,
+              y: pol.base.y - 22,
+              opacity: 0,
+            }, { config: M.GENTLE });
+          });
+          anim.to({ scale: 1.06, opacity: 0 }, { config: M.GENTLE });
+          pushRoll(camera, roll);
+          // Reset the stack behind the incoming screen so it's intact if the
+          // user swipes straight back.
+          setTimeout(() => {
+            opening = false;
+            anim.set({ y: 0, scale: 1, opacity: 1, rotate: home.rotation });
+            polaroids.forEach((pol) => {
+              pol.anim.set({
+                rotate: pol.base.rotate, x: pol.base.x, y: pol.base.y, opacity: 1,
+              });
+            });
+          }, 420);
+        } else {
+          anim.to({ y: 0, scale: 1, rotate: home.rotation }, {
+            config: M.SETTLE,
+            velocity: { y: s.vy },
+          });
+          restFan(s.vy);
+        }
+      },
     });
-  }
-
-  // ── Roll detail (scattered polaroids) ──
-  function renderRollDetailContent(inner, card) {
-    const roll = card.roll;
-    const rect = getCardDimensions();
-    const positions = scatterPositions(roll.photos.length, rect.w, rect.h, 140, 170, hashStr(roll.id));
-
-    roll.photos.forEach((photo, i) => {
-      const pos = positions[i];
-      const item = document.createElement('div');
-      item.className = 'scattered-item scattered-polaroid';
-      if (i % 3 === 0) item.classList.add('large');
-      item.style.left = pos.x + 'px';
-      item.style.top = pos.y + 'px';
-      item.style.transform = `rotate(${pos.rotation}deg)`;
-
-      const pol = document.createElement('div');
-      pol.className = 'polaroid';
-      const img = document.createElement('img');
-      img.src = getPhotoSrc(photo, false);
-      img.alt = '';
-      img.draggable = false;
-      pol.appendChild(img);
-      item.appendChild(pol);
-
-      setupPressFeedback(item);
-      item.addEventListener('click', () => openPhotoViewer(photo, roll));
-      inner.appendChild(item);
-    });
-
-    requestAnimationFrame(() => animateItemsIn(inner));
   }
 
   // ── Navigation ──
-  function drillIntoCamera(camera) {
-    navigationStack.push({ title: 'my cameras', cards: [...cards], index: currentCardIndex });
-    cards = [{ type: 'camera-detail', title: camera.name, camera }];
-    currentCardIndex = 0;
-    renderCards();
+  function currentScreen() { return screens[screens.length - 1]; }
+
+  function trailFor() {
+    return screens.map((s) => s.spec.label);
   }
 
-  function drillIntoRoll(camera, roll) {
-    navigationStack.push({ title: camera.name, cards: [...cards], index: currentCardIndex });
-    cards = [{ type: 'roll-detail', title: roll.title, flag: roll.flag, roll, camera }];
-    currentCardIndex = 0;
-    renderCards();
+  function pushScreen(spec) {
+    const parent = currentScreen();
+    const screen = new Screen(spec);
+    screensEl.appendChild(screen.el);
+    screens.push(screen);
+
+    screen.anim.set({ x: width });
+    screen.anim.to({ x: 0 }, {
+      config: M.GLIDE,
+      onRest: () => { if (screens[screens.length - 1] === screen) parent.setVisible(false); },
+    });
+    parent.anim.to({ x: -width * PARALLAX }, { config: M.GLIDE });
+    parent.dimAnim.to({ opacity: 1 }, { config: M.GLIDE });
+    return screen;
   }
 
-  function navigateBack(toIndex) {
-    const target = navigationStack[toIndex];
-    navigationStack = navigationStack.slice(0, toIndex);
-    cards = target.cards;
-    currentCardIndex = target.index;
-    renderCards();
+  function pushCamera(camera) {
+    pushScreen({
+      label: camera.name,
+      trail: trailFor(),
+      cards: [{ type: 'camera-detail', title: camera.name, camera: camera }],
+    });
   }
 
-  // ── Card swipe (horizontal, spring-based) ──
-  let swipeStartX = 0, swipeDx = 0, swiping = false, swipeLocked = false;
-
-  function setupCardSwipe() {
-    cardViewport.addEventListener('touchstart', (e) => {
-      if (e.touches.length !== 1) return;
-      swipeStartX = e.touches[0].clientX;
-      swipeDx = 0; swiping = false; swipeLocked = false;
-    }, { passive: true });
-
-    cardViewport.addEventListener('touchmove', (e) => {
-      if (e.touches.length !== 1) return;
-      const dx = e.touches[0].clientX - swipeStartX;
-      const dy = e.touches[0].clientY - (e.touches[0].clientY); // not tracking Y start here
-
-      if (!swipeLocked) {
-        if (Math.abs(dx) < 5) return;
-        swipeLocked = true;
-        swiping = true;
-      }
-
-      if (swiping) {
-        swipeDx = dx;
-        // Rubber band at edges
-        let adjustedDx = dx;
-        if ((currentCardIndex === 0 && dx > 0) ||
-            (currentCardIndex === cards.length - 1 && dx < 0)) {
-          adjustedDx = dx * 0.3;
-        }
-        const dim = getCardDimensions();
-        const offset = -currentCardIndex * dim.w + adjustedDx;
-        cardTrack.style.transform = `translateX(${offset}px)`;
-      }
-    }, { passive: true });
-
-    cardViewport.addEventListener('touchend', () => {
-      if (!swiping) return;
-      const dim = getCardDimensions();
-      const threshold = dim.w * 0.2;
-
-      if (swipeDx < -threshold && currentCardIndex < cards.length - 1) {
-        currentCardIndex++;
-      } else if (swipeDx > threshold && currentCardIndex > 0) {
-        currentCardIndex--;
-      }
-
-      positionTrack(true);
-      updateDots();
-      swiping = false;
-    }, { passive: true });
+  function pushRoll(camera, roll) {
+    pushScreen({
+      label: roll.title,
+      trail: trailFor(),
+      cards: [{ type: 'roll-detail', title: roll.title, flag: roll.flag, roll: roll, camera: camera }],
+    });
   }
 
-  function positionTrack(animated) {
-    const dim = getCardDimensions();
-    const offset = -currentCardIndex * dim.w;
-    if (animated) {
-      animate(cardTrack, { transform: `translateX(${offset}px)` }, SPRING_SETTLE);
-    } else {
-      cardTrack.style.transform = `translateX(${offset}px)`;
+  // ── Interactive back ──
+  function beginBack(screen) {
+    const parent = screens[screens.indexOf(screen) - 1];
+    if (!parent) return;
+    screen.anim.stop();
+    parent.anim.stop();
+    parent.setVisible(true);
+    screen._backOrigin = screen.anim.get('x');
+  }
+
+  function updateBack(screen, dx) {
+    const parent = screens[screens.indexOf(screen) - 1];
+    if (!parent) return;
+    let x = Math.max(0, (screen._backOrigin || 0) + dx);
+    if (x > width) x = width + M.rubberBand(x - width, width);
+    const progress = M.clamp(x / width, 0, 1);
+    screen.anim.track({ x: x });
+    parent.anim.track({ x: -width * PARALLAX * (1 - progress) });
+    parent.dimAnim.track({ opacity: 1 - progress });
+  }
+
+  function endBack(screen, s) {
+    const parent = screens[screens.indexOf(screen) - 1];
+    if (!parent) return;
+    const projected = screen.anim.get('x') + M.project(s.vx);
+    const commit = projected > width * BACK_COMMIT || s.vx > FLICK_VELOCITY;
+    if (commit) popScreen(s.vx);
+    else cancelBack(screen, parent, s.vx);
+  }
+
+  function cancelBack(screen, parent, velocity) {
+    screen.anim.to({ x: 0 }, {
+      config: M.GLIDE,
+      velocity: velocity,
+      onRest: () => { if (screens[screens.length - 1] === screen) parent.setVisible(false); },
+    });
+    parent.anim.to({ x: -width * PARALLAX }, { config: M.GLIDE });
+    parent.dimAnim.to({ opacity: 1 }, { config: M.GLIDE });
+  }
+
+  function popScreen(velocity) {
+    if (screens.length < 2) return;
+    const screen = screens.pop();
+    const parent = currentScreen();
+    parent.setVisible(true);
+    M.haptic(8);
+
+    screen.anim.to({ x: width }, {
+      config: M.GLIDE,
+      velocity: velocity || 0,
+      onRest: () => screen.destroy(),
+    });
+    parent.anim.to({ x: 0 }, { config: M.GLIDE, velocity: velocity || 0 });
+    parent.dimAnim.to({ opacity: 0 }, { config: M.GLIDE });
+  }
+
+  // Breadcrumb jump — drop the levels in between, then animate the top one
+  // away so the motion still reads as "going back".
+  function popTo(index) {
+    if (index >= screens.length - 1) return;
+    while (screens.length - 2 > index) {
+      screens.splice(screens.length - 2, 1)[0].destroy();
     }
+    popScreen(0);
   }
 
-  // ── Dots ──
-  let dotsContainer = null;
+  // ── Photo viewer ──
+  let viewerOpen = false;
+  let viewerPages = [];
+  let viewerIndex = 0;
+  let viewerSource = null;
+  const stageAnim = new M.Animated(stageEl);
+  const trackAnim = new M.Animated(trackEl);
+  const scrimAnim = new M.Animated(scrimEl, { opacity: 0 });
 
-  function renderDots() {
-    if (dotsContainer) dotsContainer.remove();
-    if (cards.length <= 1) return;
+  const idle = window.requestIdleCallback || function (cb) { return setTimeout(cb, 1); };
 
-    dotsContainer = document.createElement('div');
-    dotsContainer.className = 'card-dots';
-    cards.forEach((_, i) => {
-      const dot = document.createElement('div');
-      dot.className = 'card-dot' + (i === currentCardIndex ? ' active' : '');
-      dotsContainer.appendChild(dot);
+  function mountViewer(roll) {
+    trackEl.innerHTML = '';
+    viewerPages = roll.photos.map((photo) => {
+      const page = el('div', 'viewer-page');
+      const frame = el('div', 'viewer-frame');
+      const img = el('img');
+      img.draggable = false;
+      img.alt = '';
+      frame.appendChild(img);
+      page.appendChild(frame);
+      trackEl.appendChild(page);
+      return { photo: photo, el: page, frame: frame, img: img, loaded: false };
     });
-    document.getElementById('app').appendChild(dotsContainer);
   }
 
-  function updateDots() {
-    if (!dotsContainer) return;
-    dotsContainer.querySelectorAll('.card-dot').forEach((dot, i) => {
-      dot.classList.toggle('active', i === currentCardIndex);
+  // Only the current photo and its immediate neighbours hold a decoded
+  // full-size image. Generating one is synchronous canvas work, so anything
+  // beyond the centre is deferred to idle time — that's the difference
+  // between a clean swipe and a hitch exactly as the finger lifts.
+  function syncViewerWindow(center) {
+    viewerPages.forEach((p, i) => {
+      const dist = Math.abs(i - center);
+      if (dist === 0 && !p.loaded) {
+        p.img.src = getPhotoSrc(p.photo, true);
+        p.loaded = true;
+      } else if (dist > 2 && p.loaded) {
+        p.img.src = '';
+        p.loaded = false;
+      }
+    });
+    [center - 1, center + 1].forEach((i) => {
+      const p = viewerPages[i];
+      if (!p || p.loaded) return;
+      idle(() => {
+        if (p.loaded) return;
+        p.img.src = getPhotoSrc(p.photo, true);
+        p.loaded = true;
+      });
     });
   }
 
-  // ── Photo Viewer ──
-  let currentViewerPhotos = [];
-  let currentViewerIndex = 0;
-  let viewerDragX = 0, viewerDragY = 0;
-  let viewerStartX = 0, viewerStartY = 0;
-  let viewerSwiping = false, viewerLocked = false, viewerDirection = null;
-  let viewerStartTime = 0;
+  function openViewer(roll, index, sourceEl) {
+    viewerOpen = true;
+    viewerIndex = index;
+    viewerSource = sourceEl;
+    mountViewer(roll);
+    syncViewerWindow(index);
 
-  function openPhotoViewer(photo, roll) {
-    currentViewerPhotos = roll.photos;
-    currentViewerIndex = roll.photos.indexOf(photo);
+    viewerEl.classList.add('active');
+    trackAnim.set({ x: -index * width });
+    M.haptic(6);
 
-    photoViewerImg.src = getPhotoSrc(photo, true);
-    photoViewer.classList.add('active');
-
-    // Animate in
-    animate(photoViewerInner, { scale: [0.9, 1], opacity: [0, 1] }, SPRING_ENTER);
-
-    setupViewerGestures();
+    // Fly the viewer out of the polaroid that was tapped, so the photo
+    // appears to come from where you touched rather than from nowhere.
+    const from = flyFrom(sourceEl);
+    stageAnim.set(from);
+    stageAnim.to({ x: 0, y: 0, scale: 1, rotate: 0 }, { config: M.GLIDE });
+    scrimAnim.set({ opacity: 0 });
+    scrimAnim.to({ opacity: 1 }, { config: M.GLIDE });
   }
 
-  function closePhotoViewer() {
-    animate(photoViewerInner, { scale: 0.9, opacity: 0 }, {
-      duration: 0.2,
-      easing: EASE_SHEET,
+  // Transform that maps the centred viewer frame back onto a source element.
+  function flyFrom(sourceEl) {
+    if (!sourceEl) return { x: 0, y: 0, scale: 0.9, rotate: 0 };
+    const src = sourceEl.getBoundingClientRect();
+    const dst = viewerPages[viewerIndex].frame.getBoundingClientRect();
+    if (!dst.width || !src.width) return { x: 0, y: 0, scale: 0.9, rotate: 0 };
+    return {
+      x: (src.left + src.width / 2) - (dst.left + dst.width / 2),
+      y: (src.top + src.height / 2) - (dst.top + dst.height / 2),
+      scale: src.width / dst.width,
+      rotate: 0,
+    };
+  }
+
+  function closeViewer(velocity) {
+    if (!viewerOpen) return;
+    viewerOpen = false;
+
+    // A thrown photo keeps going the way it was thrown — reversing it back
+    // into the polaroid would fight the gesture. Only a tap-to-close, where
+    // there's no momentum to respect, flies back to where it came from.
+    let backTo;
+    if (Math.abs(velocity) > 1) {
+      backTo = {
+        x: stageAnim.get('x'),
+        y: (velocity > 0 ? 1 : -1) * height,
+        scale: 0.7,
+        rotate: stageAnim.get('rotate'),
+      };
+    } else if (viewerSource && viewerSource.isConnected) {
+      backTo = flyFrom(viewerSource);
+    } else {
+      backTo = { x: stageAnim.get('x'), y: stageAnim.get('y'), scale: 0.85, rotate: 0 };
+    }
+
+    stageAnim.to(backTo, {
+      config: M.GLIDE,
+      velocity: { y: velocity || 0 },
+      onRest: () => {
+        if (viewerOpen) return;
+        viewerEl.classList.remove('active');
+        trackEl.innerHTML = '';
+        viewerPages = [];
+        stageAnim.set({ x: 0, y: 0, scale: 1, rotate: 0, opacity: 1 });
+      },
     });
-    setTimeout(() => {
-      photoViewer.classList.remove('active');
-      photoViewerImg.src = '';
-      photoViewerInner.style.transform = '';
-      photoViewerInner.style.opacity = '';
-    }, 200);
+    stageAnim.to({ opacity: 0 }, { config: M.GLIDE });
+    scrimAnim.to({ opacity: 0 }, { config: M.GLIDE });
+  }
+
+  function goToPhoto(index, velocity) {
+    const clamped = M.clamp(index, 0, viewerPages.length - 1);
+    if (clamped !== viewerIndex) {
+      viewerIndex = clamped;
+      M.haptic(8);
+      syncViewerWindow(clamped);
+      // Once we've paged away, closing back into the original polaroid would
+      // fly to the wrong photo — drop the shared-element return.
+      viewerSource = null;
+    }
+    trackAnim.to({ x: -clamped * width }, { config: M.GLIDE, velocity: velocity || 0 });
   }
 
   function setupViewerGestures() {
-    // Tap to dismiss
-    const onViewerTap = (e) => {
-      if (e.target === photoViewer) {
-        closePhotoViewer();
-      }
-    };
-    photoViewer.addEventListener('click', onViewerTap);
+    let axis = null;
+    let originX = 0;
 
-    // Touch gestures on the image
-    photoViewerInner.addEventListener('touchstart', (e) => {
-      if (e.touches.length !== 1) return;
-      viewerStartX = e.touches[0].clientX;
-      viewerStartY = e.touches[0].clientY;
-      viewerDragX = 0; viewerDragY = 0;
-      viewerSwiping = false; viewerLocked = false; viewerDirection = null;
-      viewerStartTime = Date.now();
-    }, { passive: true });
-
-    photoViewerInner.addEventListener('touchmove', (e) => {
-      if (e.touches.length !== 1) return;
-      viewerDragX = e.touches[0].clientX - viewerStartX;
-      viewerDragY = e.touches[0].clientY - viewerStartY;
-
-      if (!viewerLocked) {
-        if (Math.abs(viewerDragX) < 5 && Math.abs(viewerDragY) < 5) return;
-        viewerLocked = true;
-        viewerDirection = Math.abs(viewerDragX) > Math.abs(viewerDragY) ? 'h' : 'v';
-        viewerSwiping = true;
-      }
-
-      if (viewerSwiping) {
-        e.preventDefault();
-        if (viewerDirection === 'h') {
-          photoViewerInner.style.transform = `translateX(${viewerDragX}px) rotate(${viewerDragX * 0.02}deg)`;
+    new G.Drag(viewerEl, {
+      axis: 'both',
+      onStart: () => {
+        trackAnim.stop();
+        stageAnim.stop();
+        axis = null;
+        originX = trackAnim.get('x');
+      },
+      onMove: (s) => {
+        if (!axis) axis = s.axis;
+        if (axis === 'x') {
+          const min = -(viewerPages.length - 1) * width;
+          let x = originX + s.dx;
+          if (x > 0) x = M.rubberBand(x, width);
+          else if (x < min) x = min + M.rubberBand(x - min, width);
+          trackAnim.track({ x: x });
         } else {
-          const progress = Math.min(Math.abs(viewerDragY) / 300, 1);
-          photoViewerInner.style.transform = `translateY(${viewerDragY}px) scale(${1 - progress * 0.15})`;
-          photoViewer.style.background = `rgba(0,0,0,${0.0 * (1 - progress)})`;
+          const progress = M.clamp(Math.abs(s.dy) / (height * 0.5), 0, 1);
+          stageAnim.track({
+            y: s.dy,
+            scale: 1 - progress * 0.2,
+            // A slight tilt in the drag direction gives the photo some weight.
+            rotate: s.dx * 0.008,
+          });
+          scrimAnim.track({ opacity: 1 - progress * 0.85 });
         }
-      }
-    }, { passive: false });
+      },
+      onEnd: (s) => {
+        if (axis === 'x') {
+          const projected = trackAnim.get('x') + M.project(s.vx);
+          let target = M.clamp(
+            Math.round(-projected / width), viewerIndex - 1, viewerIndex + 1
+          );
+          goToPhoto(target, s.vx);
+        } else {
+          const projected = Math.abs(s.dy) + Math.abs(M.project(s.vy)) * 0.5;
+          if (projected > height * 0.22 || Math.abs(s.vy) > 650) {
+            closeViewer(s.vy);
+          } else {
+            stageAnim.to({ y: 0, scale: 1, rotate: 0 }, {
+              config: M.SETTLE,
+              velocity: { y: s.vy },
+            });
+            scrimAnim.to({ opacity: 1 }, { config: M.SETTLE });
+          }
+        }
+        axis = null;
+      },
+    });
 
-    photoViewerInner.addEventListener('touchend', () => {
-      if (!viewerSwiping) return;
-      const elapsed = Date.now() - viewerStartTime;
-      const vx = viewerDragX / Math.max(elapsed, 1) * 1000;
-      const vy = viewerDragY / Math.max(elapsed, 1) * 1000;
-
-      if (viewerDirection === 'h') {
-        handleHorizontalSwipe(vx);
-      } else {
-        handleVerticalDismiss(vy);
-      }
-      viewerSwiping = false;
-    }, { passive: true });
-  }
-
-  function handleHorizontalSwipe(vx) {
-    const threshold = 80;
-    if ((viewerDragX < -threshold || vx < -500) && currentViewerIndex < currentViewerPhotos.length - 1) {
-      // Swipe left — next photo
-      animate(photoViewerInner, {
-        transform: `translateX(-${window.innerWidth}px) rotate(-15deg)`,
-      }, { duration: 0.25, easing: EASE_SHEET });
-
-      setTimeout(() => {
-        currentViewerIndex++;
-        photoViewerImg.src = getPhotoSrc(currentViewerPhotos[currentViewerIndex], true);
-        photoViewerInner.style.transform = `translateX(${window.innerWidth}px) rotate(15deg)`;
-        requestAnimationFrame(() => {
-          animate(photoViewerInner, { transform: 'translateX(0) rotate(0deg)' }, SPRING_SETTLE);
-        });
-      }, 250);
-    } else if ((viewerDragX > threshold || vx > 500) && currentViewerIndex > 0) {
-      // Swipe right — prev photo
-      animate(photoViewerInner, {
-        transform: `translateX(${window.innerWidth}px) rotate(15deg)`,
-      }, { duration: 0.25, easing: EASE_SHEET });
-
-      setTimeout(() => {
-        currentViewerIndex--;
-        photoViewerImg.src = getPhotoSrc(currentViewerPhotos[currentViewerIndex], true);
-        photoViewerInner.style.transform = `translateX(-${window.innerWidth}px) rotate(-15deg)`;
-        requestAnimationFrame(() => {
-          animate(photoViewerInner, { transform: 'translateX(0) rotate(0deg)' }, SPRING_SETTLE);
-        });
-      }, 250);
-    } else {
-      // Snap back
-      animate(photoViewerInner, { transform: 'translateX(0) rotate(0deg)' }, SPRING_SETTLE);
-    }
-  }
-
-  function handleVerticalDismiss(vy) {
-    if (Math.abs(viewerDragY) > 100 || Math.abs(vy) > 500) {
-      // Dismiss
-      const dir = viewerDragY > 0 ? 1 : -1;
-      animate(photoViewerInner, {
-        transform: `translateY(${dir * window.innerHeight}px) scale(0.8)`,
-        opacity: 0,
-      }, { duration: 0.25, easing: EASE_SHEET });
-      setTimeout(() => closePhotoViewer(), 200);
-    } else {
-      // Snap back
-      animate(photoViewerInner, {
-        transform: 'translateY(0) scale(1)',
-      }, SPRING_SETTLE);
-    }
+    // Tapping the surround closes; tapping the photo itself does not.
+    new G.Drag(scrimEl, {
+      axis: 'none',
+      onTap: () => closeViewer(0),
+    });
   }
 
   // ── Init ──
-  buildCards();
-  renderCards();
-  setupCardSwipe();
+  function boot() {
+    const root = new Screen({
+      label: 'my cameras',
+      trail: null,
+      cards: [
+        { type: 'cameras', title: 'my cameras' },
+        { type: 'film', title: 'my film' },
+      ],
+    });
+    screensEl.appendChild(root.el);
+    screens.push(root);
+    setupViewerGestures();
+  }
 
+  // Rebuilding the scatter on every resize means the layout reshuffles when
+  // the mobile URL bar collapses. Only a real width change justifies that;
+  // a height change just needs the geometry refreshed.
+  let resizeTimer = 0;
   window.addEventListener('resize', () => {
-    renderCards();
+    const newW = window.innerWidth;
+    height = window.innerHeight;
+    if (newW === width) {
+      screens.forEach((s) => s.relayout());
+      return;
+    }
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(() => {
+      width = window.innerWidth;
+      screens.forEach((s, i) => {
+        s.relayout();
+        s.anim.set({ x: i === screens.length - 1 ? 0 : -width * PARALLAX });
+      });
+      if (viewerOpen) trackAnim.set({ x: -viewerIndex * width });
+    }, 120);
   });
 
+  // Hardware/browser back pops a screen instead of leaving the prototype.
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      if (viewerOpen) closeViewer(0);
+      else popScreen(0);
+    }
+  });
+
+  boot();
 })();

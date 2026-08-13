@@ -5,21 +5,25 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="theme-color" content="#f2efe8">
   <title>ana_log</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23f2efe8'/%3E%3Crect x='4' y='9' width='24' height='16' rx='3' fill='%231a1a1a'/%3E%3Ccircle cx='16' cy='17' r='5' fill='%23f2efe8'/%3E%3Ccircle cx='16' cy='17' r='2.4' fill='%231a3a5c'/%3E%3Crect x='11' y='6' width='7' height='3' rx='1.2' fill='%231a1a1a'/%3E%3C/svg%3E">
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
   <div id="app">
-    <div class="card-viewport" id="card-viewport">
-      <div class="card-track" id="card-track"></div>
-    </div>
+    <div class="screens" id="screens"></div>
+
     <div class="photo-viewer" id="photo-viewer">
-      <div class="photo-viewer-inner" id="photo-viewer-inner">
-        <img id="photo-viewer-img" src="" alt="">
+      <div class="viewer-scrim" id="viewer-scrim"></div>
+      <div class="viewer-stage" id="viewer-stage">
+        <div class="viewer-track" id="viewer-track"></div>
       </div>
     </div>
   </div>
-  <script src="https://cdn.jsdelivr.net/npm/motion@11.11.13/dist/motion.js"></script>
+
+  <script src="motion.js"></script>
+  <script src="gestures.js"></script>
   <script src="data.js"></script>
   <script src="app.js"></script>
 </body>
